@@ -65,6 +65,78 @@ function clockwise(corners) {
     Math.atan2(a[1] - centerY, a[0] - centerX) - Math.atan2(b[1] - centerY, b[0] - centerX));
 }
 
+function unitVector(from, to) {
+  const dx = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const length = Math.hypot(dx, dy);
+  return length > 1e-5 ? [dx / length, dy / length] : [0, 0];
+}
+
+function mixPoint(a, b, t) {
+  return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+}
+
+function lineIntersection(p1, p2, p3, p4, fallback, maxDistance) {
+  const den = (p1[0] - p2[0]) * (p3[1] - p4[1]) - (p1[1] - p2[1]) * (p3[0] - p4[0]);
+  if (Math.abs(den) < 1e-5) return fallback;
+  const c1 = p1[0] * p2[1] - p1[1] * p2[0];
+  const c2 = p3[0] * p4[1] - p3[1] * p4[0];
+  const x = (c1 * (p3[0] - p4[0]) - (p1[0] - p2[0]) * c2) / den;
+  const y = (c1 * (p3[1] - p4[1]) - (p1[1] - p2[1]) * c2) / den;
+  const dist = Math.hypot(x - fallback[0], y - fallback[1]);
+  if (dist <= maxDistance) return [x, y];
+  const scale = maxDistance / dist;
+  return [fallback[0] + (x - fallback[0]) * scale, fallback[1] + (y - fallback[1]) * scale];
+}
+
+function extractFramePoints(hands) {
+  // Sort hands left-to-right in mirrored camera space.
+  const [leftHand, rightHand] = [...hands]
+    .sort((a, b) => b[0].x - a[0].x)
+    .map(hand => hand.map(point => [1 - point.x, point.y]));
+
+  const orderedOpen = clockwise([leftHand[4], leftHand[8], rightHand[4], rightHand[8]]);
+  let topLeftIndex = 0;
+  for (let i = 1; i < 4; i++) {
+    if (orderedOpen[i][0] + orderedOpen[i][1] < orderedOpen[topLeftIndex][0] + orderedOpen[topLeftIndex][1]) {
+      topLeftIndex = i;
+    }
+  }
+  const openQuad = Array.from({ length: 4 }, (_, i) => orderedOpen[(topLeftIndex + i) % 4]);
+
+  // Also detect classic photographer's viewfinder pose (inverted L + upright L).
+  const li = unitVector(leftHand[5], leftHand[8]);
+  const lt = unitVector(leftHand[2], leftHand[4]);
+  const ri = unitVector(rightHand[5], rightHand[8]);
+  const rt = unitVector(rightHand[2], rightHand[4]);
+  const vfScoreA = Math.min(li[0], lt[1], -ri[0], -rt[1]);
+  const vfScoreB = Math.min(li[0], -lt[1], -ri[0], rt[1]);
+  const vfScore = Math.max(vfScoreA, vfScoreB);
+  const t = Math.max(0, Math.min(1, (vfScore - 0.25) / 0.3));
+  const blend = t * t * (3 - 2 * t);
+  if (blend <= 0) return openQuad;
+
+  let viewfinderQuad;
+  if (vfScoreA >= vfScoreB) {
+    const tl = mixPoint(leftHand[5], leftHand[2], 0.14);
+    const trFallback = [rightHand[4][0], leftHand[8][1]];
+    const trRay = lineIntersection(leftHand[5], leftHand[8], rightHand[3], rightHand[4], trFallback, 0.045);
+    const tr = mixPoint(trRay, trFallback, 0.45);
+    const br = mixPoint(rightHand[2], rightHand[5], 0.32);
+    const bl = mixPoint(leftHand[4], rightHand[8], 0.5);
+    viewfinderQuad = [tl, tr, br, bl];
+  } else {
+    const bl = mixPoint(leftHand[5], leftHand[2], 0.14);
+    const tlFallback = [leftHand[4][0], rightHand[8][1]];
+    const tlRay = lineIntersection(rightHand[5], rightHand[8], leftHand[3], leftHand[4], tlFallback, 0.045);
+    const tl = mixPoint(tlRay, tlFallback, 0.45);
+    const tr = mixPoint(rightHand[2], rightHand[5], 0.32);
+    const br = mixPoint(rightHand[4], leftHand[8], 0.5);
+    viewfinderQuad = [tl, tr, br, bl];
+  }
+  return openQuad.map((point, index) => mixPoint(point, viewfinderQuad[index], blend));
+}
+
 function moveCorner(index, x, y) {
   const clamp = value => Math.min(0.965, Math.max(0.035, value));
   const moved = [...demoCorners];
@@ -164,7 +236,7 @@ function startFrames(tracker) {
 
       let message = hands.length === 1 ? '识别到一只手，请伸出另一只手' : '把双手放进画面';
       if (hands.length === 2) {
-        const raw = [...hands].sort((a, b) => b[0].x - a[0].x).flatMap(hand => [4, 8].map(index => [1 - hand[index].x, hand[index].y]));
+        const raw = extractFramePoints(hands);
         points = points && now - lastValid < 190 ? raw.map(([x, y], index) => [
           points[index][0] * 0.35 + x * 0.65,
           points[index][1] * 0.35 + y * 0.65,

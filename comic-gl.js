@@ -21,10 +21,34 @@ float lightness(vec3 color) {
   return dot(color, vec3(0.299, 0.587, 0.114));
 }
 
-float edgeDistance(vec2 point, vec2 from, vec2 to) {
-  vec2 edge = (to - from) * u_size;
-  vec2 offset = (point - from) * u_size;
-  return (edge.x * offset.y - edge.y * offset.x) / max(length(edge), 0.01);
+vec3 edgeMetrics(vec2 pointPx, vec2 fromPx, vec2 toPx, float seed) {
+  vec2 edge = toPx - fromPx;
+  float len = max(length(edge), 0.01);
+  vec2 dir = edge / len;
+  vec2 offset = pointPx - fromPx;
+  float halfPlane = dir.x * offset.y - dir.y * offset.x;
+  float along = dot(offset, dir);
+  float clamped = clamp(along, 0.0, len);
+  float segDist = length(offset - dir * clamped);
+
+  // Subtle hand-inked pen tremor along each edge, tapering cleanly to zero at corners.
+  float t = clamped / len;
+  float taper = sin(t * 3.14159265);
+  float wave = sin(along * 0.055 + seed) * 0.55
+             + sin(along * 0.145 - seed * 1.9) * 0.30
+             + sin(along * 0.31 + seed * 3.1) * 0.15;
+  return vec3(halfPlane, segDist, wave * taper);
+}
+
+float quadDistance(vec2 pointPx, vec2 c0, vec2 c1, vec2 c2, vec2 c3) {
+  vec3 e0 = edgeMetrics(pointPx, c0, c1, 0.7);
+  vec3 e1 = edgeMetrics(pointPx, c1, c2, 2.3);
+  vec3 e2 = edgeMetrics(pointPx, c2, c3, 4.1);
+  vec3 e3 = edgeMetrics(pointPx, c3, c0, 5.7);
+  float halfPlane = min(min(e0.x, e1.x), min(e2.x, e3.x));
+  if (halfPlane >= 0.0) return halfPlane;
+  float segDist = min(min(e0.y, e1.y), min(e2.y, e3.y));
+  return min(halfPlane, -segDist / 1.75);
 }
 
 vec3 comic(vec2 uv, vec3 original) {
@@ -65,17 +89,88 @@ void main() {
     return;
   }
   vec3 original = texture2D(u_frame, uv).rgb;
-  float distanceToEdge = min(
-    min(edgeDistance(v_position, u_corners[0], u_corners[1]), edgeDistance(v_position, u_corners[1], u_corners[2])),
-    min(edgeDistance(v_position, u_corners[2], u_corners[3]), edgeDistance(v_position, u_corners[3], u_corners[0]))
-  );
-
-  if (u_opacity <= 0.0 || distanceToEdge < -1.25) {
+  if (u_opacity <= 0.0) {
     gl_FragColor = vec4(original, 1.0);
     return;
   }
-  float mask = smoothstep(-0.8, 1.25, distanceToEdge) * u_opacity;
-  vec3 color = mix(original, comic(uv, original), mask);
+
+  vec2 p = v_position * u_size;
+  vec2 c0 = u_corners[0] * u_size;
+  vec2 c1 = u_corners[1] * u_size;
+  vec2 c2 = u_corners[2] * u_size;
+  vec2 c3 = u_corners[3] * u_size;
+
+  // Scale border thickness with canvas size and gracefully shrink for very small quads.
+  vec2 center = (c0 + c1 + c2 + c3) * 0.25;
+  float inradius = max(0.0, quadDistance(center, c0, c1, c2, c3));
+  float unit = max(min(u_size.x, u_size.y) / 720.0, 0.65) * clamp(inradius / 70.0, 0.28, 1.0);
+
+  vec3 e0 = edgeMetrics(p, c0, c1, 0.7);
+  vec3 e1 = edgeMetrics(p, c1, c2, 2.3);
+  vec3 e2 = edgeMetrics(p, c2, c3, 4.1);
+  vec3 e3 = edgeMetrics(p, c3, c0, 5.7);
+
+  float minSeg = min(min(e0.y, e1.y), min(e2.y, e3.y));
+  float outerWobble = 0.85 * unit;
+  float innerWobble = 0.35 * unit;
+
+  float outerHalf = min(
+    min(e0.x + e0.z * outerWobble, e1.x + e1.z * outerWobble),
+    min(e2.x + e2.z * outerWobble, e3.x + e3.z * outerWobble)
+  );
+  float outerDist = outerHalf >= 0.0 ? outerHalf : min(outerHalf, -minSeg / 1.75);
+
+  float innerDist = min(
+    min(e0.x - e0.z * innerWobble, e1.x - e1.z * innerWobble),
+    min(e2.x - e2.z * innerWobble, e3.x - e3.z * innerWobble)
+  );
+
+  // Layered comic-panel frame: hard ink drop shadow -> bold outer ink -> warm paper rim -> inner ink rule.
+  float outerExtent = 3.8 * unit;
+  float paperStart = 1.5 * unit;
+  float innerInkStart = 5.0 * unit;
+  float comicStart = 7.0 * unit;
+  float aa = 0.9;
+
+  vec2 shadowOffset = vec2(7.0, 8.0) * unit;
+  float shadowDist = quadDistance(p - shadowOffset, c0, c1, c2, c3);
+
+  // Quick skip when completely outside both the comic border and its offset drop shadow.
+  if (outerDist < -(outerExtent + aa) && shadowDist < -(outerExtent + aa)) {
+    gl_FragColor = vec4(original, 1.0);
+    return;
+  }
+
+  vec3 frameInk = vec3(0.055, 0.04, 0.125);
+  vec3 framePaper = vec3(1.0, 0.96, 0.84);
+
+  float outerMask = smoothstep(-outerExtent - aa, -outerExtent + aa, outerDist);
+  float shadowMask = smoothstep(-outerExtent - aa, -outerExtent + aa, shadowDist) * (1.0 - outerMask);
+
+  vec3 color = original;
+  if (shadowMask > 0.0) {
+    // Subtle printed halftone texture inside the hard comic offset shadow.
+    vec2 rotShadow = vec2(p.x + p.y, p.y - p.x) * 0.7071;
+    vec2 shadowCell = fract(rotShadow / max(4.5, u_size.x * 0.0058)) - 0.5;
+    float shadowDot = 1.0 - smoothstep(0.24, 0.34, length(shadowCell));
+    float shadowAlpha = mix(0.76, 0.92, shadowDot) * shadowMask * u_opacity;
+    color = mix(color, frameInk, shadowAlpha);
+  }
+
+  if (outerMask > 0.0) {
+    float paperMask = smoothstep(paperStart - aa, paperStart + aa, innerDist);
+    float innerInkMask = smoothstep(innerInkStart - aa, innerInkStart + aa, innerDist);
+    float comicMask = smoothstep(comicStart - aa, comicStart + aa, innerDist);
+
+    vec3 panelColor = frameInk;
+    panelColor = mix(panelColor, framePaper, paperMask);
+    panelColor = mix(panelColor, frameInk, innerInkMask);
+    if (comicMask > 0.0) {
+      panelColor = mix(panelColor, comic(uv, original), comicMask);
+    }
+    color = mix(color, panelColor, outerMask * u_opacity);
+  }
+
   gl_FragColor = vec4(color, 1.0);
 }`;
 

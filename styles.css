@@ -69,8 +69,8 @@ button:focus-visible, a:focus-visible, video:focus-visible { outline: 2px solid 
 .secondary { background: transparent; color: var(--paper); border-color: var(--line); }
 .secondary:hover:not(:disabled) { border-color: var(--muted); }
 
-.reference { width: min(42vw, 600px, calc((100svh - 175px) * 1.33)); margin: 0; animation-delay: .10s; }
-.reference video { display: block; width: 100%; height: auto; aspect-ratio: 4/3; background: var(--panel); outline: 1px solid var(--line); }
+.reference { width: min(42vw, 640px, calc((100svh - 175px) * 1.77)); margin: 0; animation-delay: .10s; }
+.reference video { display: block; width: 100%; height: auto; aspect-ratio: 16/9; background: var(--panel); outline: 1px solid var(--line); }
 .reference figcaption { padding-top: 13px; font-size: 13px; color: var(--muted); }
 
 .workspace {
