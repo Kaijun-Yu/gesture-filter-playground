@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#161521">
+  <title>漫画窗 · 手势滤镜游乐园</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./play.js"></script>
+</head>
+<body class="play">
+  <header class="site-header">
+    <a class="brand" href="./" aria-label="手势滤镜游乐园首页">
+      <span class="brand-mark" aria-hidden="true"></span>手势滤镜游乐园
+    </a>
+    <a class="return-link" href="./">返回视频</a>
+  </header>
+  <main class="workspace">
+    <div class="studio">
+      <div class="stage" id="stage">
+        <canvas id="view" aria-label="局部漫画滤镜预览"></canvas>
+        <video id="camera-feed" muted playsinline hidden></video>
+        <div class="handles" id="handles" hidden>
+          <button class="handle" type="button" aria-label="拖动左上角，也可使用方向键"></button>
+          <button class="handle" type="button" aria-label="拖动右上角，也可使用方向键"></button>
+          <button class="handle" type="button" aria-label="拖动右下角，也可使用方向键"></button>
+          <button class="handle" type="button" aria-label="拖动左下角，也可使用方向键"></button>
+        </div>
+      </div>
+      <div class="stage-caption">
+        <span id="source-label">示例画面</span>
+        <span class="stage-status" id="status" role="status">正在准备预览</span>
+      </div>
+    </div>
+    <aside class="controls">
+      <h1>漫画滤镜</h1>
+      <p id="instructions">拖动示例画面的四个角，调整漫画滤镜的位置和形状。</p>
+      <button class="button primary" id="camera-toggle" type="button">开启摄像头</button>
+      <button class="button secondary" id="reset" type="button">重置选区</button>
+      <p class="privacy">摄像头画面只在本机处理。</p>
+    </aside>
+  </main>
+  <noscript><p class="no-script">请启用 JavaScript 后再打开试玩页。</p></noscript>
+</body>
+</html>
