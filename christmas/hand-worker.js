@@ -1,22 +1,31 @@
-const landmarker = import('./hand-tracking.js').then(({ createHandLandmarker }) => createHandLandmarker());
+const trackingModule = import('./hand-tracking.js');
+let trackerPromise = trackingModule.then(({ createHandLandmarker }) => createHandLandmarker({ preferGpu: true }));
 
 function reportError(error) {
   self.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
 }
 
-landmarker.then(() => self.postMessage({ type: 'ready' }), reportError);
+trackerPromise.then(() => self.postMessage({ type: 'ready' }), reportError);
 
 self.addEventListener('message', async ({ data: { bitmap, time } }) => {
   try {
-    const tracker = await landmarker;
-    const result = tracker.detectForVideo(bitmap, time);
+    let tracker = await trackerPromise;
+    let result;
+    try {
+      result = tracker.detectForVideo(bitmap, time);
+    } catch (error) {
+      if (tracker.delegate === 'GPU') {
+        tracker.close?.();
+        trackerPromise = trackingModule.then(({ createHandLandmarker }) => createHandLandmarker({ preferGpu: false }));
+        tracker = await trackerPromise;
+        result = tracker.detectForVideo(bitmap, time);
+      } else {
+        throw error;
+      }
+    }
     self.postMessage({
       type: 'result',
-      result: {
-        landmarks: result.landmarks,
-        worldLandmarks: result.worldLandmarks,
-        handednesses: result.handednesses ?? result.handedness,
-      },
+      result: { landmarks: result.landmarks },
     });
   } catch (error) {
     reportError(error);

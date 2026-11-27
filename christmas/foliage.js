@@ -146,13 +146,18 @@ export function buildFoliage(group, random) {
     color: '#38413d', roughness: .97, envMapIntensity: .25,
   }));
   trunk.position.y = 2.85;
+  trunk.castShadow = true;
+  trunk.receiveShadow = true;
   const bark = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(wood, 3));
   group.add(trunk, new THREE.LineSegments(bark, new THREE.LineBasicMaterial({ color: '#354b4c' })));
   const foliage = new THREE.BufferGeometry();
   foliage.setAttribute('position', new THREE.Float32BufferAttribute(needles, 3));
   foliage.setAttribute('color', new THREE.Float32BufferAttribute(needleColors, 3));
   foliage.computeVertexNormals();
-  group.add(new THREE.Mesh(foliage, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide })));
+  const foliageMesh = new THREE.Mesh(foliage, new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  foliageMesh.castShadow = true;
+  foliageMesh.receiveShadow = true;
+  group.add(foliageMesh);
 
   const powder = new THREE.SphereGeometry(1, 10, 6);
   const surface = powder.attributes.position;
@@ -166,6 +171,8 @@ export function buildFoliage(group, random) {
   powder.computeVertexNormals();
   const snow = new THREE.InstancedMesh(powder,
     new THREE.MeshStandardMaterial({ color: '#abc1cf', roughness: .94, envMapIntensity: .36 }), caps.length);
+  snow.castShadow = true;
+  snow.receiveShadow = true;
   const clump = new THREE.Object3D();
   const blue = new THREE.Color('#7799ac');
   caps.forEach(({ x, y, z, yaw, slope, length, height, width, tint }, i) => {

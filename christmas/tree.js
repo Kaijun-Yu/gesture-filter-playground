@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { addFrostLights, addSpiral, addStarFlare } from './lights.js';
+import { addFrostLights, addSpiral, addStarBeams, addStarFlare } from './lights.js';
 import { buildFoliage } from './foliage.js';
 
 const TAU = Math.PI * 2;
@@ -24,6 +24,32 @@ export function glowTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
+export function contactShadowTexture() {
+  const size = 128;
+  const canvas = Object.assign(document.createElement('canvas'), { width: size, height: size });
+  const ctx = canvas.getContext('2d');
+  const image = ctx.createImageData(size, size);
+  const data = image.data;
+  // Soft rounded-box contact ambient occlusion matching rectangular gift footprints
+  for (let y = 0; y < size; y++) {
+    const ny = (y / (size - 1)) * 2 - 1;
+    for (let x = 0; x < size; x++) {
+      const nx = (x / (size - 1)) * 2 - 1;
+      const qx = Math.max(0, Math.abs(nx) - 0.56);
+      const qy = Math.max(0, Math.abs(ny) - 0.56);
+      const dist = Math.hypot(qx, qy);
+      const alpha = Math.max(0, Math.min(1, Math.exp(-dist * dist * 16.5) * (1 - Math.max(0, (dist - 0.34) / 0.14))));
+      const idx = (y * size + x) * 4;
+      data[idx] = 4;
+      data[idx + 1] = 10;
+      data[idx + 2] = 22;
+      data[idx + 3] = Math.round(alpha * 255);
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+  return new THREE.CanvasTexture(canvas);
+}
+
 function addOrnaments(group, ornaments, random) {
   const globe = new THREE.SphereGeometry(1, 22, 15);
   const drop = new THREE.LatheGeometry([[0, -1.40], [.25, -1.08], [.66, -.61], [.81, -.17], [.78, .29], [.59, .65], [.25, 1.00], [0, 1.07]]
@@ -44,6 +70,8 @@ function addOrnaments(group, ornaments, random) {
     ornament.position.set(x * 1.045, y - size - .059 - random() * .077, z * 1.045);
     ornament.scale.setScalar(size);
     ornament.rotation.y = random() * TAU;
+    ornament.castShadow = true;
+    ornament.receiveShadow = true;
     const collar = new THREE.Mesh(cap, hardware);
     collar.scale.setScalar(size);
     collar.position.copy(ornament.position);
@@ -70,23 +98,40 @@ function addGifts(group, glow) {
     [1.52, .91, .51, .65, .48, '#264167', '#bccfdc', .31],
     [1.79, .39, .45, .26, .39, '#2c4f75', '#ddc498', -.25],
   ];
+  const contactMap = contactShadowTexture();
   const shadowGeometry = new THREE.PlaneGeometry(1, 1);
-  const shadowMaterial = new THREE.MeshBasicMaterial({ map: glow, color: '#010408', opacity: .66, transparent: true, depthWrite: false });
+  const contactMaterial = new THREE.MeshBasicMaterial({ map: contactMap, opacity: .62, transparent: true, depthWrite: false });
+  // Subtle ambient occlusion pool directly under the dense spruce base
+  const treeAo = new THREE.Mesh(shadowGeometry, new THREE.MeshBasicMaterial({ map: glow, color: '#020814', opacity: .44, transparent: true, depthWrite: false }));
+  treeAo.position.set(0.18, -.011, -0.22);
+  treeAo.rotation.x = -Math.PI / 2;
+  treeAo.scale.set(5.4, 5.4, 1);
+  treeAo.renderOrder = -4;
+  group.add(treeAo);
+
   for (const [x, z, w, h, d, paper, ribbon, angle] of boxes) {
-    const shadow = new THREE.Mesh(shadowGeometry, shadowMaterial);
-    shadow.position.set(x, -.017, z);
-    shadow.rotation.set(-Math.PI / 2, 0, angle);
-    shadow.scale.set(w * 2.4, d * 2.4, 1);
-    shadow.renderOrder = -4;
-    group.add(shadow);
+    // Tight rectangular contact occlusion right beneath the box edges
+    const contact = new THREE.Mesh(shadowGeometry, contactMaterial);
+    contact.position.set(x + .035, -.004, z - .042);
+    contact.rotation.set(-Math.PI / 2, 0, angle);
+    contact.scale.set(w * 1.48, d * 1.48, 1);
+    contact.renderOrder = -2;
+    group.add(contact);
+
     const gift = new THREE.Group();
     gift.position.set(x, h * .5, z);
     gift.rotation.y = angle;
-    const wrap = new THREE.MeshStandardMaterial({ color: paper, roughness: .53, metalness: .10 });
-    const trim = new THREE.MeshStandardMaterial({ color: ribbon, roughness: .40, metalness: .43 });
-    gift.add(new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wrap));
+    const wrap = new THREE.MeshStandardMaterial({ color: paper, roughness: .55, metalness: .08 });
+    const trim = new THREE.MeshStandardMaterial({ color: ribbon, roughness: .40, metalness: .42 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), wrap);
+    body.castShadow = true;
+    body.receiveShadow = true;
+    gift.add(body);
     for (const dimensions of [[w + .006, h + .008, .067], [.068, h + .014, d + .006]]) {
-      gift.add(new THREE.Mesh(new THREE.BoxGeometry(...dimensions), trim));
+      const bandMesh = new THREE.Mesh(new THREE.BoxGeometry(...dimensions), trim);
+      bandMesh.castShadow = true;
+      bandMesh.receiveShadow = true;
+      gift.add(bandMesh);
     }
     const loop = new THREE.TorusGeometry(.073, .012, 5, 16);
     for (const side of [-1, 1]) {
@@ -94,6 +139,8 @@ function addGifts(group, glow) {
       bow.scale.set(1, .45, 1);
       bow.position.set(side * .063, h * .5 + .039, 0);
       bow.rotation.set(Math.PI * .21, side * .28, side * .39);
+      bow.castShadow = true;
+      bow.receiveShadow = true;
       gift.add(bow);
     }
     group.add(gift);
@@ -132,6 +179,8 @@ export function createTree(scene, random, glow, screenHeight) {
   const light = { value: 0 };
   const clock = { value: 0 };
   const starGlow = { value: 1 };
+  const starAngle = { value: 0 };
+  const starFacing = { value: 1 };
   const uniforms = { light, clock, screenHeight };
   const lightRandom = seededRandom(71265);
   const curve = addSpiral(tree, lightRandom, uniforms);
@@ -145,7 +194,8 @@ export function createTree(scene, random, glow, screenHeight) {
     return THREE.MathUtils.lerp(lengths[first], lengths[first + 1], index - first) / lengths[last];
   };
   addFrostLights(tree, crystals, lightRandom, arcAtHeight, uniforms);
-  addStarFlare(tree, star.position, { light, starGlow });
+  addStarBeams(star, { light, starGlow });
+  addStarFlare(tree, star.position, { light, starGlow, starAngle, starFacing });
 
   const sparkMaterial = new THREE.SpriteMaterial({
     map: glow, color: '#d6eeff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0,
@@ -164,8 +214,14 @@ export function createTree(scene, random, glow, screenHeight) {
       light.value = progress;
       starGlow.value = 1 + .055 * Math.sin(time * TAU / 5.6);
       const gold = THREE.MathUtils.smoothstep(progress, .85, .995);
-      star.rotation.y = yaw + time * .13;
-      star.material.emissiveIntensity = gold * 3.05 * starGlow.value;
+      // Let the 3D star rotate naturally in world space while its flare tracks its relative angle to camera
+      const spin = time * .34;
+      star.rotation.y = spin;
+      const relativeAngle = spin - yaw;
+      const facing = Math.abs(Math.cos(relativeAngle));
+      starAngle.value = relativeAngle;
+      starFacing.value = .45 + .55 * facing;
+      star.material.emissiveIntensity = gold * 3.15 * starGlow.value * (.84 + .22 * facing);
       spark.position.copy(curve.getPointAt(Math.min(1, progress * 1.013)));
       const travel = THREE.MathUtils.smoothstep(progress, 0, .055) * (1 - THREE.MathUtils.smoothstep(progress, .91, 1));
       spark.material.opacity = travel * .86;

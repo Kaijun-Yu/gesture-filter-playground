@@ -212,6 +212,47 @@ export function addSpiral(tree, random, uniforms) {
   return curve;
 }
 
+export function addStarBeams(star, uniforms) {
+  // Two crossed 3D additive planes attached directly to the rotating star mesh
+  // so the golden rays physically rotate in 3D space with the star's tips.
+  const material = new THREE.ShaderMaterial({
+    ...additive,
+    uniforms,
+    side: THREE.DoubleSide,
+    vertexShader: `
+      varying vec2 uvPos;
+      void main() {
+        uvPos = uv * 2.0 - 1.0;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }`,
+    fragmentShader: `
+      varying vec2 uvPos;
+      uniform float light, starGlow;
+
+      void main() {
+        vec2 p = uvPos;
+        float r = length(p);
+        float lit = smoothstep(0.84, 0.995, light);
+        // 8-point volumetric star beams aligned to the 3D star's exact 4 cardinal + 4 diagonal tips
+        float cardinal = (exp(-abs(p.x) * 26.0) + exp(-abs(p.y) * 26.0)) * exp(-r * 3.1);
+        vec2 diag = mat2(0.7071, 0.7071, -0.7071, 0.7071) * p;
+        float secondary = (exp(-abs(diag.x) * 34.0) + exp(-abs(diag.y) * 34.0)) * exp(-r * 4.2) * 0.65;
+        float core = exp(-r * r * 18.0) * 0.55;
+        float edge = 1.0 - smoothstep(0.72, 1.0, r);
+        vec3 gold = mix(vec3(1.0, 0.75, 0.40), vec3(1.0, 0.95, 0.82), clamp(core * 1.4, 0.0, 1.0));
+        float intensity = (cardinal * 0.95 + secondary + core) * starGlow * lit * edge;
+        gl_FragColor = vec4(gold * intensity * 1.45, clamp(intensity, 0.0, 1.0));
+        #include <colorspace_fragment>
+      }`,
+  });
+  const geom = new THREE.PlaneGeometry(2.85, 2.85);
+  const planeA = new THREE.Mesh(geom, material);
+  const planeB = new THREE.Mesh(geom, material);
+  planeB.rotation.y = Math.PI / 2;
+  planeA.renderOrder = planeB.renderOrder = 2;
+  star.add(planeA, planeB);
+}
+
 export function addStarFlare(tree, position, uniforms) {
   const material = new THREE.ShaderMaterial({
     ...additive, uniforms,
@@ -224,33 +265,51 @@ export function addStarFlare(tree, position, uniforms) {
       }`,
     fragmentShader: `
       varying vec2 coordinates;
-      uniform float light, starGlow;
+      uniform float light, starGlow, starAngle, starFacing;
 
       void main() {
-        vec2 p = coordinates * vec2(2.0, 1.0);
+        vec2 p = coordinates * 1.72;
         float r = length(p);
         float lit = smoothstep(0.88, 0.998, light);
         float strike = lit * (1.0 - smoothstep(0.975, 1.0, light));
-        float core = exp(-r * r * 425.0) * 1.45;
-        float halo = (exp(-r * r * 29.0) * 0.32 + exp(-r * r * 7.1) * 0.13) * 0.91;
-        float axis = exp(-abs(p.y) * 141.0) * exp(-abs(p.x) * 1.87) * 0.29;
-        vec2 diagonal = mat2(0.91, 0.41, -0.41, 0.91) * p;
-        float rays = (exp(-abs(diagonal.x) * 74.0) + exp(-abs(diagonal.y) * 86.0))
-                    * exp(-r * 5.9) * 0.61;
+
+        // Perspective-coupled diffraction flare: horizontal rays breathe & sweep naturally as the 3D star turns
+        float tilt = sin(starAngle) * 0.28;
+        float ct = cos(tilt);
+        float st = sin(tilt);
+        vec2 tilted = mat2(ct, st, -st, ct) * p;
+        // Secondary facet glint rotates softly as facets pass across the view
+        float glintAngle = starAngle * 0.5 + 0.78539816;
+        float cg = cos(glintAngle);
+        float sg = sin(glintAngle);
+        vec2 glintAxes = mat2(cg, sg, -sg, cg) * p;
+
+        float facetPulse = 0.68 + 0.32 * starFacing;
+        float core = exp(-r * r * 380.0) * (1.28 + 0.26 * starFacing);
+        float halo = (exp(-r * r * 26.0) * 0.28 + exp(-r * r * 6.8) * 0.12) * 0.90;
+
+        // Vertical axis stays anchored to the upright star while horizontal axis foreshortens with 3D facing
+        float vertRay = exp(-abs(p.x) * 70.0) * exp(-r * 5.2) * (0.46 * facetPulse);
+        float horizRay = exp(-abs(tilted.y) * 95.0) * exp(-abs(tilted.x) * (2.2 + 2.4 * (1.0 - starFacing))) * (0.34 * starFacing);
+        float facetRays = (exp(-abs(glintAxes.x) * 84.0) + exp(-abs(glintAxes.y) * 92.0))
+                        * exp(-r * 6.2) * (0.44 * facetPulse);
+
         vec3 rimDistance = (vec3(r) - vec3(0.415, 0.431, 0.453) - strike * 0.054) * 37.0;
-        vec3 rim = exp(-rimDistance * rimDistance) * 0.042;
-        float exposure = (1.14 * starGlow + strike * 2.65) * lit;
-        float edge = (1.0 - smoothstep(0.70, 1.0, abs(coordinates.x))) * (1.0 - smoothstep(0.68, 1.0, abs(p.y)));
+        vec3 rim = exp(-rimDistance * rimDistance) * 0.040;
+        float exposure = (1.08 * starGlow + strike * 2.55) * lit;
+        float edge = (1.0 - smoothstep(0.72, 1.0, abs(coordinates.x))) * (1.0 - smoothstep(0.72, 1.0, abs(coordinates.y)));
+
         vec3 gold = vec3(1.0, 0.73, 0.39);
-        vec3 lightColor = vec3(1.0, 0.93, 0.78) * core + gold * (halo + rays);
-        lightColor += vec3(0.67, 0.80, 1.0) * axis + rim;
+        vec3 warmCream = vec3(1.0, 0.93, 0.78);
+        vec3 lightColor = warmCream * core + gold * (halo + vertRay + facetRays);
+        lightColor += vec3(0.76, 0.85, 1.0) * horizRay + rim;
         lightColor *= exposure;
         float opacity = min(1.0, max(lightColor.r, max(lightColor.g, lightColor.b)));
         gl_FragColor = vec4(lightColor / max(opacity, 0.001), opacity * edge);
         #include <colorspace_fragment>
       }`,
   });
-  const flare = new THREE.Mesh(new THREE.PlaneGeometry(10, 5), material);
+  const flare = new THREE.Mesh(new THREE.PlaneGeometry(8.6, 8.6), material);
   flare.position.copy(position);
   flare.frustumCulled = false;
   flare.renderOrder = 2;

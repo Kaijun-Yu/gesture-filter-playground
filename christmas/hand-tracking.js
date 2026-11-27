@@ -1,5 +1,13 @@
 let visionPromise;
 
+const LANDMARKER_OPTIONS = {
+  runningMode: 'VIDEO',
+  numHands: 1,
+  minHandDetectionConfidence: 0.4,
+  minHandPresenceConfidence: 0.35,
+  minTrackingConfidence: 0.35,
+};
+
 export function prepareVision() {
   visionPromise ??= (async () => {
     const vision = await import('../vendor/vision_bundle.mjs');
@@ -12,16 +20,39 @@ export function prepareVision() {
   return visionPromise;
 }
 
-export async function createHandLandmarker() {
+export async function createHandLandmarker({ preferGpu = true } = {}) {
   const { vision, files } = await prepareVision();
-  return vision.HandLandmarker.createFromOptions(files, {
-    baseOptions: { modelAssetPath: new URL('../vendor/hand_landmarker.task', import.meta.url).href },
-    runningMode: 'VIDEO',
-    numHands: 2,
-    minHandDetectionConfidence: 0.43,
-    minHandPresenceConfidence: 0.42,
-    minTrackingConfidence: 0.4,
-  });
+  const modelAssetPath = new URL('../vendor/hand_landmarker.task', import.meta.url).href;
+  const delegates = preferGpu ? ['GPU', 'CPU'] : ['CPU'];
+  let lastError;
+  for (const delegate of delegates) {
+    try {
+      const tracker = await vision.HandLandmarker.createFromOptions(files, {
+        ...LANDMARKER_OPTIONS,
+        baseOptions: { modelAssetPath, delegate },
+      });
+      tracker.delegate = delegate;
+      return tracker;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+async function captureFrame(video, maxWidth = 384) {
+  const width = video.videoWidth;
+  const height = video.videoHeight;
+  if (width > maxWidth && height > 0) {
+    const resizeWidth = maxWidth;
+    const resizeHeight = Math.max(1, Math.round(height * (maxWidth / width)));
+    try {
+      return await createImageBitmap(video, { resizeWidth, resizeHeight, resizeQuality: 'low' });
+    } catch {
+      // Fall back to full-size bitmap if resize options are unsupported.
+    }
+  }
+  return createImageBitmap(video);
 }
 
 export function createHandWorker() {
@@ -48,7 +79,7 @@ export function createHandWorker() {
       sending = true;
       let bitmap;
       try {
-        bitmap = await createImageBitmap(video);
+        bitmap = await captureFrame(video);
         if (failure) throw failure;
         return await new Promise((resolveFrame, rejectFrame) => {
           pending = { resolve: resolveFrame, reject: rejectFrame };
