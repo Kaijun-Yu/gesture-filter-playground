@@ -3,6 +3,7 @@ import { Reflector } from '../vendor/three/Reflector.js';
 import { createTree, glowTexture, seededRandom } from './tree.js';
 import { createBloom } from './bloom.js';
 import { addAurora } from './aurora.js';
+import { addFireworks } from './fireworks.js';
 
 const TAU = Math.PI * 2;
 
@@ -119,88 +120,6 @@ function addSnow(scene, random, glow) {
   };
 }
 
-function addFireworks(scene, random, glow) {
-  const count = 174;
-  const bursts = Array.from({ length: 5 }, () => {
-    const positions = new Float32Array(count * 3);
-    const trails = new Float32Array(count * 6);
-    const speed = new Float32Array(count * 3);
-    const geometry = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(positions, 3).setUsage(THREE.DynamicDrawUsage));
-    const trailGeometry = new THREE.BufferGeometry().setAttribute('position', new THREE.BufferAttribute(trails, 3).setUsage(THREE.DynamicDrawUsage));
-    const material = new THREE.PointsMaterial({ size: .125, map: glow, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
-    const trailMaterial = new THREE.LineBasicMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending });
-    const points = new THREE.Points(geometry, material);
-    const lines = new THREE.LineSegments(trailGeometry, trailMaterial);
-    const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glow, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
-    flash.scale.set(1.8, 1.8, 1);
-    const group = new THREE.Group();
-    points.frustumCulled = lines.frustumCulled = false;
-    group.add(points, lines, flash);
-    group.visible = false;
-    scene.add(group);
-    return { group, points, lines, flash, positions, trails, speed, start: -Infinity };
-  });
-
-  let slot = 0;
-  function spawn(time, yaw, handX) {
-    const side = handX < .5 ? -1 : 1;
-    for (let index = 0; index < 2; index++) {
-      const burst = bursts[slot++ % bursts.length];
-      const lateral = (2.48 + random() * .61) * side * (index ? -1 : 1);
-      const behind = -1.25 - random() * 1.2;
-      burst.group.position.set(Math.cos(yaw) * lateral + Math.sin(yaw) * behind, 4.17 + index * .62 + random() * .6, -Math.sin(yaw) * lateral + Math.cos(yaw) * behind);
-      burst.group.visible = false;
-      burst.start = time + index * .24;
-      const tint = index ? '#e8d2a7' : '#b6e7ff';
-      burst.points.material.color.set(tint);
-      burst.lines.material.color.set(tint);
-      burst.flash.material.color.set(tint);
-      const offset = random() * TAU;
-      for (let i = 0; i < count; i++) {
-        const phi = i * 2.399963 + offset;
-        const cos = 1 - (2 * i + 1) / count;
-        const sin = Math.sqrt(1 - cos * cos);
-        const power = (index ? .91 : 1.13) * (1.33 + Math.pow(random(), .52) * 1.56);
-        const k = i * 3;
-        burst.speed[k] = Math.cos(phi) * sin * power;
-        burst.speed[k + 1] = cos * power;
-        burst.speed[k + 2] = Math.sin(phi) * sin * power;
-      }
-    }
-  }
-
-  function update(time) {
-    for (const burst of bursts) {
-      const age = time - burst.start;
-      burst.group.visible = age >= 0 && age < 2.38;
-      if (!burst.group.visible) continue;
-      const spread = Math.log1p(age * 2.12) / 1.5;
-      const tailAge = Math.max(0, age - .12);
-      const tail = Math.log1p(tailAge * 2.12) / 1.5;
-      const alpha = Math.pow(1 - age / 2.38, 1.15);
-      burst.points.material.opacity = alpha * .98;
-      burst.points.material.size = .163 + .24 * Math.exp(-6 * age);
-      burst.lines.material.opacity = Math.min(.63, alpha * .83);
-      burst.flash.material.opacity = .84 * Math.exp(-9 * age);
-      for (let i = 0; i < count * 3; i++) {
-        const gravity = i % 3 === 1 ? .53 : 0;
-        const position = burst.speed[i] * spread - gravity * age * age;
-        burst.positions[i] = position;
-        const line = Math.floor(i / 3) * 6 + i % 3;
-        burst.trails[line] = position;
-        burst.trails[line + 3] = burst.speed[i] * tail - gravity * tailAge * tailAge;
-      }
-      burst.points.geometry.attributes.position.needsUpdate = true;
-      burst.lines.geometry.attributes.position.needsUpdate = true;
-    }
-  }
-
-  return {
-    spawn, update,
-    reset() { for (const burst of bursts) { burst.start = -Infinity; burst.group.visible = false; } },
-  };
-}
-
 export function createWinterScene(canvas) {
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
   renderer.setClearColor(0x000000, 0);
@@ -230,7 +149,7 @@ export function createWinterScene(canvas) {
   scene.add(mist);
   const tree = createTree(scene, random, glow, screenHeight);
   const snow = addSnow(scene, random, glow);
-  const fireworks = addFireworks(scene, random, glow);
+  const fireworks = addFireworks(scene, seededRandom(9815), glow, screenHeight);
   let yaw = .29;
   let desiredYaw = yaw;
   let snowAmount = 0;
@@ -254,7 +173,7 @@ export function createWinterScene(canvas) {
 
   return {
     turn(radians) { desiredYaw += radians; },
-    celebrate(time, x = .5) { celebrated = true; fireworks.spawn(time, yaw, x); },
+    celebrate(time, x = .5) { celebrated = true; fireworks.spawn(time, yaw, x, camera.aspect); },
     reset() { desiredYaw = .29; celebrated = false; snowAmount = 0; fireworks.reset(); },
     frame(time, progress) {
       const dt = Math.min(.06, Math.max(.001, time - previous));

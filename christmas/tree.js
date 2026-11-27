@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { addFrostLights, addSpiral, addStarFlare } from './lights.js';
+import { buildFoliage } from './foliage.js';
 
 const TAU = Math.PI * 2;
 
@@ -23,140 +24,42 @@ export function glowTexture() {
   return new THREE.CanvasTexture(canvas);
 }
 
-function addInterior(group) {
-  const vertices = [];
-  const colors = [];
-  const triangles = [];
-  const sections = 49;
-  const bands = 31;
-  const shadow = new THREE.Color('#25394d');
-  const moonlit = new THREE.Color('#5d7788');
-  const tint = new THREE.Color();
-  for (let j = 0; j <= bands; j++) {
-    const height = j / bands;
-    const taper = .035 + 1.24 * (1 - height) ** .96;
-    for (let k = 0; k < sections; k++) {
-      const angle = k / sections * TAU;
-      const fold = .89 + .12 * Math.sin(j * 2.37 + angle * 4.0) + .073 * Math.sin(angle * 9.0 + j * .64);
-      vertices.push(Math.cos(angle) * taper * fold, .51 + height * 5.16 + taper * Math.cos(angle * 7.0 + j * .7) * .077, Math.sin(angle) * taper * fold);
-      tint.copy(shadow).lerp(moonlit, .25 + fold * .22 + .15 * Math.sin(angle * 4.0 + height * 23.0));
-      colors.push(tint.r, tint.g, tint.b);
-      if (j < bands) {
-        const first = j * sections + k;
-        const next = j * sections + (k + 1) % sections;
-        triangles.push(first, first + sections, next, next, first + sections, next + sections);
-      }
-    }
-  }
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-  geometry.setIndex(triangles);
-  geometry.computeVertexNormals();
-  group.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ vertexColors: true, color: '#b6c5d6', roughness: 1 })));
-}
-
-function buildFoliage(group, random, glow) {
-  const stems = [];
-  const needles = [];
-  const colors = [];
-  const snow = [];
-  const snowColors = [];
-  const crystals = [];
-  const ornaments = [];
-  const cold = new THREE.Color('#557388');
-  const bright = new THREE.Color('#c1d9e6');
-  const depth = new THREE.Color('#192e3a');
-  const color = new THREE.Color();
-  const tierCount = 37;
-
-  for (let tier = 0; tier < tierCount; tier++) {
-    const level = tier / tierCount;
-    const y = .44 + level * 5.16;
-    const envelope = 2.0 * Math.pow(1 - level, .92) + .11;
-    const whorl = 1 + .12 * Math.sin(tier * 1.49);
-    const branches = Math.ceil(4 + (1 - level) * 5);
-    for (let i = 0; i < branches; i++) {
-      const azimuth = i * TAU / branches + tier * 2.41 + (random() - .5) * .37;
-      const cosine = Math.cos(azimuth);
-      const sine = Math.sin(azimuth);
-      const reach = envelope * whorl * (.78 + random() * .27);
-      const bend = (.22 - level * .10) * (.65 + random() * .68);
-      let last = [cosine * .065, y, sine * .065];
-      for (let k = 1; k <= 9; k++) {
-        const p = k / 9;
-        const stem = [cosine * reach * p, y - Math.sin(p * 2.14) * bend + .15 * p ** 4, sine * reach * p];
-        stems.push(...last, ...stem);
-        last = stem;
-      }
-      const samples = 91 - Math.round(level * 31);
-      for (let k = 0; k < samples; k++) {
-        const p = .07 + Math.pow(random(), .67) * .93;
-        const width = (.048 + Math.sin(p * Math.PI) * .218) * reach;
-        const side = (random() - .5) * 2 * width;
-        const radius = Math.max(.06, reach * p - Math.abs(side) * .38);
-        const off = (random() - .53) * .24 * (1 - level * .45);
-        const x = cosine * radius - sine * side;
-        const z = sine * radius + cosine * side;
-        const h = y - Math.sin(p * 2.14) * bend + .15 * p ** 4 + off;
-        const length = (.024 + random() * .091) * (1 - level * .24);
-        const turn = azimuth + (random() - .5) * 2.4;
-        const frost = .09 + p * .37 + random() * .43 + Math.max(0, off) * .63;
-        color.copy(depth).lerp(cold, Math.min(1, frost * 1.45));
-        needles.push(x, h, z, x + Math.cos(turn) * length, h + (random() - .44) * length, z + Math.sin(turn) * length);
-        colors.push(color.r, color.g, color.b);
-        color.copy(cold).lerp(bright, Math.min(.95, frost * (.65 + random() * .59)));
-        colors.push(color.r, color.g, color.b);
-        if (k % 3 === 0 && (p > .32 || random() > .33)) {
-          const frostX = x + Math.cos(turn) * length * .7;
-          const frostY = h + .024 + random() * .023;
-          const frostZ = z + Math.sin(turn) * length * .7;
-          snow.push(frostX, frostY, frostZ);
-          color.copy(cold).lerp(bright, Math.min(.96, frost + random() * .2));
-          snowColors.push(color.r, color.g, color.b);
-          if (p > .37 || k % 2 === 0) crystals.push([frostX, frostY, frostZ]);
-        }
-      }
-      if (tier % 3 === 1 && i % 2 === tier % 2 && level < .93 && random() > .18) {
-        const p = .77 + random() * .22;
-        ornaments.push([cosine * reach * p, y - bend * .96 - .075, sine * reach * p, level]);
-      }
-    }
-  }
-
-  function geometry(positions, vertexColors) {
-    const geo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-    if (vertexColors) geo.setAttribute('color', new THREE.Float32BufferAttribute(vertexColors, 3));
-    return geo;
-  }
-  addInterior(group);
-  group.add(new THREE.LineSegments(geometry(stems), new THREE.LineBasicMaterial({ color: '#3b5362', opacity: .78, transparent: true, depthWrite: false })));
-  group.add(new THREE.LineSegments(geometry(needles, colors), new THREE.LineBasicMaterial({ vertexColors: true, opacity: .76, transparent: true, depthWrite: false })));
-  group.add(new THREE.Points(geometry(snow, snowColors), new THREE.PointsMaterial({ vertexColors: true, size: .042, map: glow, opacity: .85, transparent: true, depthWrite: false })));
-  const trunk = new THREE.Mesh(new THREE.CylinderGeometry(.062, .125, 1.06, 10), new THREE.MeshStandardMaterial({ color: '#263542', roughness: .94 }));
-  trunk.position.y = .53;
-  group.add(trunk);
-  return { crystals, ornaments };
-}
-
 function addOrnaments(group, ornaments, random) {
-  const globe = new THREE.SphereGeometry(1, 15, 11);
-  const faceted = new THREE.IcosahedronGeometry(1, 0);
-  const cap = new THREE.CylinderGeometry(.027, .032, .033, 8);
-  const hardware = new THREE.MeshStandardMaterial({ color: '#ad905d', metalness: .74, roughness: .29, envMapIntensity: 1.2 });
-  const materials = ['#305f91', '#c2d9e8', '#bb9762', '#6b89ae'].map(color =>
-    new THREE.MeshStandardMaterial({ color, metalness: .72, roughness: .23, envMapIntensity: 1.30 }));
+  const globe = new THREE.SphereGeometry(1, 22, 15);
+  const drop = new THREE.LatheGeometry([[0, -1.40], [.25, -1.08], [.66, -.61], [.81, -.17], [.78, .29], [.59, .65], [.25, 1.00], [0, 1.07]]
+    .map(([x, y]) => new THREE.Vector2(x, y)), 13);
+  const band = new THREE.TorusGeometry(1, .028, 5, 24);
+  const cap = new THREE.CylinderGeometry(.205, .25, .25, 10);
+  const hardware = new THREE.MeshStandardMaterial({ color: '#cfb88c', metalness: .72, roughness: .28, envMapIntensity: 1.4 });
+  const finishes = [
+    ['#325a8d', .65, .22], ['#c7dde9', .50, .24], ['#c0a071', .74, .31], ['#6a92ab', .44, .27], ['#736b9d', .48, .28],
+  ].map(([color, metalness, roughness]) => new THREE.MeshPhysicalMaterial({
+    color, metalness, roughness, clearcoat: .56, clearcoatRoughness: .23, envMapIntensity: 1.45,
+  }));
+  const threads = [];
   ornaments.forEach(([x, y, z, level], index) => {
-    const detail = index % 5 === 0;
-    const size = (.058 + random() * .066) * (1 - level * .17);
-    const ornament = new THREE.Mesh(detail ? faceted : globe, materials[index % materials.length]);
-    ornament.position.set(x * 1.06, y - size * .8, z * 1.06);
-    ornament.scale.set(size * (detail ? .73 : 1), size * (detail ? 1.48 : 1), size * (detail ? .73 : 1));
+    const finial = index % 5 === 0;
+    const size = (.088 + random() * .071 + (index % 8 === 4 ? .022 : 0)) * (1 - level * .29);
+    const ornament = new THREE.Mesh(finial ? drop : globe, finishes[index % finishes.length]);
+    ornament.position.set(x * 1.045, y - size - .059 - random() * .077, z * 1.045);
+    ornament.scale.setScalar(size);
     ornament.rotation.y = random() * TAU;
     const collar = new THREE.Mesh(cap, hardware);
-    collar.position.set(ornament.position.x, ornament.position.y + size * (detail ? 1.36 : .96), ornament.position.z);
+    collar.scale.setScalar(size);
+    collar.position.copy(ornament.position);
+    collar.position.y += size * (finial ? 1.03 : .98);
+    threads.push(x, y, z, collar.position.x, collar.position.y + size * .12, collar.position.z);
     group.add(ornament, collar);
+    if (!finial && index % 3 === 1) {
+      const trim = new THREE.Mesh(band, hardware);
+      trim.position.copy(ornament.position);
+      trim.rotation.set(Math.PI / 2 + (random() - .5) * .38, .12, .13);
+      trim.scale.setScalar(size);
+      group.add(trim);
+    }
   });
+  const cords = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(threads, 3));
+  group.add(new THREE.LineSegments(cords, new THREE.LineBasicMaterial({ color: '#998663' })));
 }
 
 function addGifts(group, glow) {
@@ -222,7 +125,7 @@ function addStar(tree) {
 export function createTree(scene, random, glow, screenHeight) {
   const tree = new THREE.Group();
   scene.add(tree);
-  const { crystals, ornaments } = buildFoliage(tree, random, glow);
+  const { crystals, ornaments } = buildFoliage(tree, seededRandom(18137));
   addOrnaments(tree, ornaments, random);
   addGifts(tree, glow);
   const star = addStar(tree);
