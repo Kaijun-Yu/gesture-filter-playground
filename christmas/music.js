@@ -390,7 +390,7 @@ export function createChristmasMusic() {
     timer = null;
   }
 
-  async function enable({ explicit = false } = {}) {
+  async function enable({ explicit = false, fadeIn = false } = {}) {
     if (!explicit && userMuted) return false;
     if (explicit) userMuted = false;
     // Strictly idempotent: never reset scheduling or stack bars if already playing
@@ -410,9 +410,18 @@ export function createChristmasMusic() {
       enabled = true;
       if (!sessionBus) sessionBus = createSessionBus();
       const now = ctx.currentTime;
+      const startGain = Math.max(0.001, master.gain.value);
       master.gain.cancelScheduledValues(now);
-      master.gain.setValueAtTime(Math.max(0.0001, master.gain.value), now);
-      master.gain.linearRampToValueAtTime(0.88, now + 0.6);
+      master.gain.setValueAtTime(startGain, now);
+      if (fadeIn) {
+        // Smooth perceptual (exponential) 8.2s swell ONLY on initial page entry
+        master.gain.exponentialRampToValueAtTime(Math.max(startGain, 0.05), now + 2.5);
+        master.gain.exponentialRampToValueAtTime(Math.max(startGain, 0.24), now + 5.2);
+        master.gain.exponentialRampToValueAtTime(0.56, now + 8.2);
+      } else {
+        // Immediate clean resume when user manually toggles music back on (tiny 80ms de-click)
+        master.gain.linearRampToValueAtTime(0.56, now + 0.08);
+      }
       startScheduler();
       return true;
     })();
@@ -442,7 +451,7 @@ export function createChristmasMusic() {
       disable({ explicit: true });
       return Promise.resolve(false);
     }
-    return enable({ explicit: true });
+    return enable({ explicit: true, fadeIn: false });
   }
 
   function setPhase(phase) {

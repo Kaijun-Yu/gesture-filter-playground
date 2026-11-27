@@ -2,31 +2,49 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#161521">
-  <meta name="description" content="用双手控制摄像头画面中的漫画滤镜区域。">
-  <title>手势滤镜游乐园 · 漫画窗</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#05040b">
+  <meta name="description" content="赛博霓虹无缝画布 · 体验星雪圣诞树、漫画窗、魔法手势与声波畸变四大手势交互玩法。">
+  <title>手势游乐园 · Gesture Playground</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./home.css">
+  <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
+  <script type="module" src="./home.js"></script>
 </head>
-<body class="home">
-  <header class="site-header">
-    <a class="brand" href="./" aria-label="手势滤镜游乐园首页">
-      <span class="brand-mark" aria-hidden="true"></span>手势滤镜游乐园
-    </a>
-  </header>
-  <main class="home-hero">
-    <div class="hero-copy">
-      <h1>用双手，<br><em>框出漫画</em></h1>
-      <p>对着摄像头伸出拇指和食指。双手拉开的区域，会实时变成漫画。</p>
-      <a class="button primary" href="./play.html">开始试玩</a>
-    </div>
-    <figure class="reference">
-      <video aria-label="漫画窗选区演示视频" controls playsinline preload="metadata" poster="./assets/demo-poster.jpg" width="1280" height="720">
-        <source src="./assets/comic-demo.mp4" type="video/mp4">
-      </video>
-      <figcaption>漫画窗 · 选区演示</figcaption>
-    </figure>
+<body class="cyber-home">
+  <main class="viewport" id="viewport">
+    <canvas id="cyber-canvas" aria-label="赛博霓虹无缝手势画布，可拖动探索并点击卡片进入玩法"></canvas>
+
+    <header class="hud-top">
+      <div class="brand-lockup" aria-label="Gesture Playground">
+        <span class="prism-bar" aria-hidden="true"></span>
+        <span class="brand-cyber">GESTURE<span class="brand-sep" aria-hidden="true">//</span>PLAYGROUND</span>
+      </div>
+      <div class="hud-actions">
+        <button class="glass-chip" id="recenter-btn" type="button" hidden>
+          <span class="chip-dot" aria-hidden="true"></span>回到中心
+        </button>
+      </div>
+    </header>
+
+    <footer class="hud-bottom">
+      <span class="coord-readout" id="coord-readout" aria-hidden="true">X +0.00  Y +0.00</span>
+      <nav class="quick-dock" aria-label="四个手势玩法快速入口">
+        <a class="dock-link is-center" href="./christmastree.html" data-card="christmas">星雪圣诞树</a>
+        <a class="dock-link" href="./play.html?mode=comic" data-card="comic">漫画窗</a>
+        <a class="dock-link" href="./play.html?mode=magic" data-card="magic">魔法手势</a>
+        <a class="dock-link" href="./play.html?mode=audio" data-card="audio">声波畸变</a>
+      </nav>
+    </footer>
+
+    <noscript>
+      <div class="fallback-grid">
+        <a href="./christmastree.html">星雪圣诞树</a>
+        <a href="./play.html?mode=comic">漫画窗</a>
+        <a href="./play.html?mode=magic">魔法手势</a>
+        <a href="./play.html?mode=audio">声波畸变</a>
+      </div>
+    </noscript>
   </main>
 </body>
 </html>

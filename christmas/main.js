@@ -51,6 +51,7 @@ let greetingAnimations = [];
 let badgeHoldUntil = -Infinity;
 let badgeHoldState = 'none';
 let badgeHoldDirection = 0;
+let pendingEntryFade = true;
 
 // First-time camera onboarding toast state
 let firstCameraGuideDone = false;
@@ -75,7 +76,11 @@ function refreshMusicButton() {
 
 function unlockMusic() {
   if (music.isPlaying()) return;
-  music.enable().then(() => refreshMusicButton());
+  const fadeIn = pendingEntryFade;
+  music.enable({ fadeIn }).then(started => {
+    if (started) pendingEntryFade = false;
+    refreshMusicButton();
+  });
 }
 
 function clearToastTimers() {
@@ -510,7 +515,22 @@ async function startCamera() {
 try {
   scene = createWinterScene(stage);
   refreshControls();
+  // Default music ON with gentle fade-in on initial entry; manual pause/resume plays immediately
+  music.enable({ fadeIn: true }).then(started => {
+    if (started) pendingEntryFade = false;
+    refreshMusicButton();
+    if (!started) {
+      const resumeOnGesture = () => {
+        unlockMusic();
+        window.removeEventListener('pointerdown', resumeOnGesture, true);
+        window.removeEventListener('keydown', resumeOnGesture, true);
+      };
+      window.addEventListener('pointerdown', resumeOnGesture, { capture: true, once: true });
+      window.addEventListener('keydown', resumeOnGesture, { capture: true, once: true });
+    }
+  });
   musicButton.addEventListener('click', () => {
+    pendingEntryFade = false;
     music.toggle().then(() => refreshMusicButton());
   });
   styleButton.addEventListener('click', () => {

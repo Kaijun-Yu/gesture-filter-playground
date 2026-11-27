@@ -76,14 +76,15 @@ button:focus-visible, a:focus-visible, video:focus-visible { outline: 2px solid 
 .workspace {
   width: min(100% - 2 * clamp(20px, 5.5vw, 90px), 1440px);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(220px, 21vw, 285px);
+  grid-template-columns: minmax(0, 1fr) clamp(250px, 23vw, 315px);
   align-items: start;
-  gap: clamp(22px, 4vw, 64px);
-  margin: clamp(24px, 6vh, 68px) auto 30px;
+  gap: clamp(22px, 4vw, 60px);
+  margin: clamp(20px, 5vh, 56px) auto 30px;
 }
 
 .stage { position: relative; aspect-ratio: 16/10; background: var(--panel); border: 1px solid var(--line); overflow: hidden; }
 .stage canvas, .handles { position: absolute; inset: 0; width: 100%; height: 100%; }
+#fx-layer { pointer-events: none; }
 .handles { pointer-events: none; }
 .handle {
   position: absolute;
@@ -104,14 +105,193 @@ button:focus-visible, a:focus-visible, video:focus-visible { outline: 2px solid 
 .handle::after { content: ''; width: 12px; height: 12px; border: 2px solid var(--accent); background: var(--ink); box-shadow: 0 0 0 1px var(--ink); transition: background .15s; }
 .handle:hover::after, .handle:active::after { background: var(--accent); }
 .handle:active { cursor: grabbing; }
+
+.hand-drag {
+  position: absolute;
+  display: grid;
+  place-items: center;
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  touch-action: none;
+  z-index: 4;
+}
+.hand-drag:active { cursor: grabbing; }
+.hand-drag-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--accent);
+  background: rgba(22, 21, 33, 0.45);
+  box-shadow: 0 0 0 4px rgba(236, 250, 118, 0.16);
+  opacity: 0.45;
+  transition: transform .15s, background .15s, opacity .15s;
+}
+.hand-drag:hover .hand-drag-dot, .hand-drag:active .hand-drag-dot {
+  opacity: 1;
+  transform: scale(1.18);
+  background: rgba(236, 250, 118, 0.35);
+}
+
 .stage-caption { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 5px 16px; padding: 14px 0; color: var(--muted); font-size: 14px; }
 .stage-status { text-align: right; }
 .stage-status[data-state="tracking"] { color: var(--accent); }
-.controls { display: grid; justify-items: stretch; padding-top: 14px; }
-.controls h1 { margin: 0 0 16px; font-size: clamp(26px, 3.2vw, 38px); line-height: 1.2; letter-spacing: -.06em; }
-.controls p { color: var(--muted); margin: 0 0 23px; font-size: 15px; line-height: 1.75; }
+.controls { display: grid; justify-items: stretch; padding-top: 6px; }
+.controls h1 { margin: 0 0 12px; font-size: clamp(24px, 2.8vw, 34px); line-height: 1.2; letter-spacing: -.05em; }
+.controls p { color: var(--muted); margin: 0 0 18px; font-size: 14.5px; line-height: 1.7; }
 .controls .button + .button { margin-block-start: 9px; }
-.controls .privacy { margin: 15px 0 0; font-size: 13px; }
+.controls .privacy { margin: 14px 0 0; font-size: 13px; }
+
+.mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 4px;
+  margin-bottom: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.mode-tab {
+  min-height: 36px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .16s, color .16s, border-color .16s;
+}
+.mode-tab:hover { color: var(--paper); }
+.mode-tab[aria-selected="true"] {
+  background: var(--accent);
+  color: var(--ink);
+}
+
+.subpanel {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.pill-group {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+.pill-group.audio-sources {
+  grid-template-columns: repeat(3, 1fr);
+}
+.pill {
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .16s, color .16s, background .16s;
+}
+.pill:hover { color: var(--paper); border-color: var(--muted); }
+.pill.active {
+  color: var(--ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.gesture-badges {
+  display: grid;
+  gap: 6px;
+}
+.badge {
+  padding: 7px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+  background: var(--ink);
+  color: var(--muted);
+  font-size: 12.5px;
+  transition: border-color .16s, color .16s, background .16s;
+}
+.badge.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(236, 250, 118, 0.08);
+}
+
+.accent-outline {
+  color: var(--accent);
+  background: rgba(236, 250, 118, 0.08);
+  border-color: rgba(236, 250, 118, 0.45);
+}
+.accent-outline:hover:not(:disabled) {
+  background: rgba(236, 250, 118, 0.16);
+  border-color: var(--accent);
+}
+.accent-outline.is-active {
+  color: var(--ink);
+  background: #ff4a8d;
+  border-color: #ff4a8d;
+}
+
+.meter-row { display: grid; gap: 6px; }
+.meter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.meter-head strong { color: var(--paper); font-variant-numeric: tabular-nums; }
+.meter-track {
+  height: 7px;
+  border-radius: 99px;
+  background: var(--ink);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.meter-fill {
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, #62f8d6 0%, #ffb248 55%, #ff2e80 100%);
+  transition: width 40ms linear;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 40px;
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13.5px;
+  color: var(--paper);
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-row input {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
 .no-script { margin: 20px; }
 
 @keyframes appear {

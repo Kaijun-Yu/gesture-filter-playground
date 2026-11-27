@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#161521">
-  <title>漫画窗 · 手势滤镜游乐园</title>
+  <title>手势滤镜游乐园 · 交互试玩</title>
   <link rel="icon" href="data:,">
   <link rel="stylesheet" href="./styles.css">
   <script type="module" src="./play.js"></script>
@@ -14,12 +14,13 @@
     <a class="brand" href="./" aria-label="手势滤镜游乐园首页">
       <span class="brand-mark" aria-hidden="true"></span>手势滤镜游乐园
     </a>
-    <a class="return-link" href="./">返回视频</a>
+    <a class="return-link" href="./">返回首页</a>
   </header>
   <main class="workspace">
     <div class="studio">
       <div class="stage" id="stage">
-        <canvas id="view" aria-label="局部漫画滤镜预览"></canvas>
+        <canvas id="view" aria-label="手势特效实时预览"></canvas>
+        <canvas id="fx-layer" aria-hidden="true"></canvas>
         <video id="camera-feed" muted playsinline hidden></video>
         <div class="handles" id="handles" hidden>
           <button class="handle" type="button" aria-label="拖动左上角，也可使用方向键"></button>
@@ -27,6 +28,9 @@
           <button class="handle" type="button" aria-label="拖动右下角，也可使用方向键"></button>
           <button class="handle" type="button" aria-label="拖动左下角，也可使用方向键"></button>
         </div>
+        <button class="hand-drag" id="demo-hand" type="button" hidden aria-label="拖动示例手掌位置，也可用方向键移动">
+          <span class="hand-drag-dot" aria-hidden="true"></span>
+        </button>
       </div>
       <div class="stage-caption">
         <span id="source-label">示例画面</span>
@@ -34,11 +38,53 @@
       </div>
     </div>
     <aside class="controls">
-      <h1>漫画滤镜</h1>
+      <div class="mode-tabs" role="tablist" aria-label="玩法模式切换">
+        <button class="mode-tab" type="button" role="tab" data-mode="comic" aria-selected="true">漫画窗</button>
+        <button class="mode-tab" type="button" role="tab" data-mode="magic" aria-selected="false">魔法手势</button>
+        <button class="mode-tab" type="button" role="tab" data-mode="audio" aria-selected="false">声波畸变</button>
+      </div>
+
+      <h1 id="mode-title">漫画滤镜</h1>
       <p id="instructions">拖动示例画面的四个角，调整漫画滤镜的位置和形状。</p>
+
+      <div class="subpanel" id="panel-magic" hidden>
+        <div class="pill-group" id="magic-demo-controls">
+          <button class="pill active" type="button" data-demo-magic="fire">🔥 摊开手火苗</button>
+          <button class="pill" type="button" data-demo-magic="heart">💖 比心泡泡</button>
+        </div>
+        <div class="gesture-badges" id="magic-camera-badges" hidden>
+          <span class="badge" id="badge-fire">🔥 摊开手 · 掌心火焰 + 火苗眼</span>
+          <span class="badge" id="badge-heart">💖 食指拇指交叉比心 · 浮空爱心 + 头顶泡泡</span>
+        </div>
+      </div>
+
+      <div class="subpanel" id="panel-audio" hidden>
+        <button class="button accent-outline" id="audio-toggle" type="button">开启声音体验</button>
+        <div class="pill-group audio-sources" role="group" aria-label="音源选择">
+          <button class="pill active" type="button" data-audio-source="synth">电子律动</button>
+          <button class="pill" type="button" data-audio-source="file">本地音频</button>
+          <button class="pill" type="button" data-audio-source="mic">麦克风</button>
+        </div>
+        <input id="audio-file-input" type="file" accept="audio/*" hidden>
+        <div class="meter-row">
+          <div class="meter-head">
+            <span id="audio-source-note">手离脸越远，失真越强</span>
+            <strong id="distortion-value">0%</strong>
+          </div>
+          <div class="meter-track">
+            <div class="meter-fill" id="distortion-bar"></div>
+          </div>
+        </div>
+      </div>
+
+      <label class="toggle-row" for="nodes-toggle">
+        <span>实时渲染手掌节点</span>
+        <input id="nodes-toggle" type="checkbox">
+      </label>
+
       <button class="button primary" id="camera-toggle" type="button">开启摄像头</button>
       <button class="button secondary" id="reset" type="button">重置选区</button>
-      <p class="privacy">摄像头画面只在本机处理。</p>
+      <p class="privacy">摄像头与麦克风数据均只在本机处理。</p>
     </aside>
   </main>
   <noscript><p class="no-script">请启用 JavaScript 后再打开试玩页。</p></noscript>

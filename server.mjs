@@ -6,13 +6,29 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('./', import.meta.url));
 const port = Number(process.argv[2] ?? 4177);
-const pages = new Set(['index.html', 'play.html', 'styles.css', 'play.js', 'comic-gl.js', 'christmastree.html']);
+const pages = new Set([
+  'index.html',
+  'play.html',
+  'christmastree.html',
+  'styles.css',
+  'home.css',
+  'home.js',
+  'play.js',
+  'comic-gl.js',
+  'gestures.js',
+  'effects-2d.js',
+  'audio-fx.js',
+]);
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.mjs': 'text/javascript; charset=utf-8',
   '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
   '.mp4': 'video/mp4',
   '.wasm': 'application/wasm',
   '.woff2': 'font/woff2',

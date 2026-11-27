@@ -18,14 +18,11 @@
     <p id="greeting" class="greeting" lang="en" hidden><span>Merry Christmas</span></p>
     <header class="bar">
       <div class="actions">
-        <button class="button button-icon button-sound" id="music" type="button" aria-pressed="false" aria-label="开启圣诞音乐" title="开启圣诞音乐">
-          <span class="soundwave" aria-hidden="true">
-            <span class="soundwave-line"></span>
-            <span class="soundwave-bars">
-              <i></i><i></i><i></i><i></i><i></i>
-            </span>
-          </span>
-        </button>
+        <a class="button button-icon button-home" href="./" aria-label="返回手势游乐园首页" title="返回首页">
+          <svg class="home-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M12.5 5L7.5 10L12.5 15" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </a>
       </div>
       <div class="actions">
         <button class="button button-camera" id="camera" type="button" data-live="false">
@@ -118,6 +115,16 @@
         <button class="button button-style" id="style-toggle" type="button" aria-pressed="false" aria-label="切换 ASCII 风格" title="切换 ASCII 风格">
           <span class="style-glyph" id="style-glyph" aria-hidden="true">#</span>
           <span id="style-label">ASCII</span>
+        </button>
+      </div>
+      <div class="actions actions-center">
+        <button class="button button-icon button-sound" id="music" type="button" aria-pressed="true" aria-label="关闭圣诞音乐" title="关闭圣诞音乐">
+          <span class="soundwave" aria-hidden="true">
+            <span class="soundwave-line"></span>
+            <span class="soundwave-bars">
+              <i></i><i></i><i></i><i></i><i></i>
+            </span>
+          </span>
         </button>
       </div>
       <div class="actions">

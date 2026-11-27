@@ -16,6 +16,8 @@ uniform vec2 u_pixel;
 uniform vec2 u_crop;
 uniform float u_mirror;
 uniform float u_opacity;
+uniform float u_glitch;
+uniform float u_time;
 
 float lightness(vec3 color) {
   return dot(color, vec3(0.299, 0.587, 0.114));
@@ -89,6 +91,22 @@ void main() {
     return;
   }
   vec3 original = texture2D(u_frame, uv).rgb;
+  if (u_glitch > 0.005) {
+    float band = floor(v_position.y * 26.0);
+    float bandNoise = fract(sin(band * 127.1 + floor(u_time * 15.0) * 311.7) * 43758.5453);
+    float sliceShift = step(0.87 - u_glitch * 0.14, bandNoise) * (bandNoise - 0.5) * 0.055 * u_glitch;
+    float rgbSplit = (0.0015 + u_glitch * 0.012);
+    vec2 uvR = clamp(uv + vec2(sliceShift + rgbSplit, 0.0), 0.0, 1.0);
+    vec2 uvG = clamp(uv + vec2(sliceShift, 0.0), 0.0, 1.0);
+    vec2 uvB = clamp(uv + vec2(sliceShift - rgbSplit, 0.0), 0.0, 1.0);
+    original = vec3(
+      texture2D(u_frame, uvR).r,
+      texture2D(u_frame, uvG).g,
+      texture2D(u_frame, uvB).b
+    );
+    float scanline = 1.0 - 0.10 * u_glitch * step(0.5, fract(v_position.y * u_size.y * 0.25));
+    original *= scanline;
+  }
   if (u_opacity <= 0.0) {
     gl_FragColor = vec4(original, 1.0);
     return;
@@ -229,11 +247,13 @@ export function createComicRenderer(canvas) {
   const cropLocation = gl.getUniformLocation(program, 'u_crop');
   const mirrorLocation = gl.getUniformLocation(program, 'u_mirror');
   const opacityLocation = gl.getUniformLocation(program, 'u_opacity');
+  const glitchLocation = gl.getUniformLocation(program, 'u_glitch');
+  const timeLocation = gl.getUniformLocation(program, 'u_time');
   const coordinates = new Float32Array(8);
   let uploaded = null;
   let uploadedTime = -1;
 
-  return function render(source, crop, corners, opacity, mirror = false) {
+  return function render(source, crop, corners, opacity, mirror = false, glitch = 0, timeSec = 0) {
     const sourceTime = source.currentTime ?? 0;
     if (source !== uploaded || sourceTime !== uploadedTime) {
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, source);
@@ -249,6 +269,8 @@ export function createComicRenderer(canvas) {
     gl.uniform2f(cropLocation, crop[0], crop[1]);
     gl.uniform1f(mirrorLocation, Number(mirror));
     gl.uniform1f(opacityLocation, opacity);
+    gl.uniform1f(glitchLocation, glitch);
+    gl.uniform1f(timeLocation, timeSec);
     corners.forEach(([x, y], index) => {
       coordinates[index * 2] = x;
       coordinates[index * 2 + 1] = y;

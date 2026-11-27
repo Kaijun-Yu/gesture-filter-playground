@@ -129,6 +129,8 @@ button { -webkit-tap-highlight-color: transparent; }
   background: linear-gradient(135deg, rgba(248, 252, 255, 0.36) 0%, rgba(212, 236, 255, 0.20) 60%, rgba(180, 218, 255, 0.24) 100%);
 }
 .reset-icon { width: 18px; height: 18px; display: block; transition: transform .35s ease; }
+.home-icon { width: 18px; height: 18px; display: block; }
+.button-home { text-decoration: none; width: 38px; min-height: 38px; border-radius: 10px; }
 #reset:hover:enabled .reset-icon { transform: rotate(-50deg); }
 .scatter-emoji { font-size: 20px; line-height: 1; display: block; }
 
@@ -215,7 +217,8 @@ button { -webkit-tap-highlight-color: transparent; }
 .button-style { font-family: "SF Mono", Menlo, Consolas, monospace; letter-spacing: .04em; gap: 6px; padding-inline: 14px; }
 .style-glyph { color: #f2d59e; font-size: 14px; line-height: 1; }
 
-.controls { bottom: max(clamp(18px, 3.7vh, 38px), env(safe-area-inset-bottom)); justify-content: space-between; align-items: flex-end; }
+.controls { bottom: max(clamp(18px, 3.7vh, 38px), env(safe-area-inset-bottom)); justify-content: space-between; align-items: center; }
+.actions-center { position: absolute; left: 50%; transform: translateX(-50%); }
 .status { pointer-events: none; position: absolute; z-index: 2; max-width: min(68vw, 440px); right: clamp(18px, 3.25vw, 55px); bottom: calc(max(clamp(18px, 3.7vh, 38px), env(safe-area-inset-bottom)) + 52px); margin: 0; color: #c8d7e7; text-shadow: 0 1px 8px #020712; font-size: 12px; text-align: right; }
 .tracker-hud { position: absolute; z-index: 2; right: clamp(18px, 3.25vw, 55px); top: max(78px, calc(env(safe-area-inset-top) + 65px)); display: flex; flex-direction: column; align-items: flex-end; gap: 6px; pointer-events: none; }
 .viewfinder { position: relative; width: clamp(104px, 15.5vw, 188px); aspect-ratio: 4 / 3; border-radius: 10px; overflow: hidden; border: 1px solid #8098b944; background: #0a1a2e; box-shadow: 0 6px 24px #02081460; transition: border-color .18s, box-shadow .18s; }
