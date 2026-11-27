@@ -87,7 +87,7 @@ function addNight(scene, random, glow) {
 
 function addSnow(scene, random, glow) {
   const groups = [];
-  for (const [count, size, opacity] of [[510, .071, .96], [52, .258, .66]]) {
+  for (const [count, size, opacity] of [[510, .078, .96], [52, .275, .66]]) {
     const positions = new Float32Array(count * 3);
     const speeds = new Float32Array(count);
     for (let i = 0; i < count; i++) {
