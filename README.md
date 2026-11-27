@@ -1,5 +1,9 @@
 # 手势滤镜游乐园
 
+## 星雪圣诞树
+
+在 `christmastree` 分支运行 `node server.mjs 4178`，打开 [本地圣诞树试玩](http://127.0.0.1:4178/christmastree.html)。食指画圈会点亮圣诞树并转动镜头，张开手掌左右划动也能转动树景。手指合拢再张开会触发烟花和降雪。也可拖动场景点亮，再点击「撒花」。
+
 **漫画窗**是第一个试玩。对着摄像头伸出双手的拇指和食指，四个指尖围住的区域就会变成带描边和网点的漫画画面。不开摄像头也可以拖动示例画面的四个角。
 
 [直接试玩](https://kaijun-yu.github.io/gesture-filter-playground/play.html) · [观看演示](https://kaijun-yu.github.io/gesture-filter-playground/)

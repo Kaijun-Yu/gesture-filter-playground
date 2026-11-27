@@ -1,0 +1,132 @@
+@font-face {
+  font-family: "Great Vibes";
+  src: url("./fonts/great-vibes-latin.woff2") format("woff2");
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+  font-family: system-ui, "Microsoft YaHei", sans-serif;
+  color: #e5edf4;
+  background: #071221;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; }
+button { -webkit-tap-highlight-color: transparent; }
+
+.experience {
+  position: relative;
+  isolation: isolate;
+  min-height: 100svh;
+  height: 100dvh;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at 53% 36%, #294664 0, #142945 39%, #081626 71%, #040c18 100%);
+}
+
+.experience::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  box-shadow: inset 0 80px 100px -55px #020613cf, inset 0 -125px 120px -66px #020613e8;
+}
+
+#stage { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+#stage:active { cursor: grabbing; }
+#stage:focus-visible { outline: 1px solid #bacde870; outline-offset: -3px; }
+.greeting {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  pointer-events: none;
+  color: #e7f7ff;
+  font: 400 clamp(36px, 12.8vw, 162px) / 1.1 "Great Vibes", "Segoe Script", cursive;
+  white-space: nowrap;
+}
+.greeting::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse min(65vw, 620px) min(19vh, 155px) at center, #0813299c 0%, #0a152e53 39%, transparent 87%);
+}
+.greeting span {
+  position: relative;
+  padding-inline: .16em;
+  background-position: 30% 50%;
+  filter: drop-shadow(0 .025em .028em #13233da6) drop-shadow(0 0 .045em #b6e9ffad) drop-shadow(0 0 .16em #77a5e288);
+}
+
+@supports (background-clip: text) or (-webkit-background-clip: text) {
+  .greeting span {
+    background-image: linear-gradient(107deg, #a0c9ff 3%, #94e8f7 18%, #d0faec 32%, #fff3d9 46%, #eff7ff 55%, #c5d7ff 65%, #cdbbff 79%, #9fcaef 96%);
+    background-size: 148% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}
+.bar, .controls { position: absolute; inset-inline: clamp(18px, 3.25vw, 55px); z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 12px; pointer-events: none; }
+.bar { top: max(clamp(19px, 3.4vh, 44px), env(safe-area-inset-top)); }
+.bar h1 { margin: 0; display: flex; gap: 12px; align-items: center; color: #eaf2f8; font: 500 clamp(18px, 2.05vw, 27px) / 1.2 "Songti SC", "Noto Serif SC", "SimSun", serif; letter-spacing: .13em; }
+.north-star { color: #eacfa3; font: 400 24px / 1 system-ui, sans-serif; }
+
+.actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; pointer-events: auto; }
+.button {
+  min-height: 44px;
+  padding: 0 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: 1px solid #bacde83c;
+  border-radius: 6px;
+  background: #081626bb;
+  color: #e5edf4;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background .18s, border-color .18s;
+}
+
+.button:hover:enabled { background: #203957; border-color: #c1d6f080; }
+.button:focus-visible { outline: 2px solid #f3d8a9; outline-offset: 3px; }
+.button:disabled { opacity: .42; cursor: default; }
+.button-quiet { background: #07142380; }
+.button-snow { color: #152138; background: #d7e5f2; border-color: #d7e5f2; }
+.button-snow:hover:enabled { color: #14223a; background: #f2f7fa; }
+.camera-symbol { display: block; width: 14px; height: 10px; position: relative; border: 1px solid currentColor; border-radius: 2px; }
+.camera-symbol::after { content: ""; position: absolute; width: 3px; height: 3px; left: 4px; top: 2px; border: 1px solid currentColor; border-radius: 50%; }
+
+.controls { bottom: max(clamp(18px, 3.7vh, 38px), env(safe-area-inset-bottom)); align-items: flex-end; }
+.instructions { text-shadow: 0 1px 14px #020712; }
+.instructions p { margin: 0; }
+#gesture-instruction { font-size: clamp(15px, 1.5vw, 19px); letter-spacing: .035em; }
+#input-hint { margin-top: 5px; color: #acbed3; font-size: 12px; }
+.status { pointer-events: none; position: absolute; z-index: 2; max-width: min(68vw, 440px); right: clamp(18px, 3.25vw, 55px); bottom: calc(max(clamp(18px, 3.7vh, 38px), env(safe-area-inset-bottom)) + 52px); margin: 0; color: #c8d7e7; text-shadow: 0 1px 8px #020712; font-size: 12px; text-align: right; }
+.viewfinder { position: absolute; z-index: 2; right: clamp(18px, 3.25vw, 55px); top: max(78px, calc(env(safe-area-inset-top) + 65px)); width: clamp(76px, 13vw, 150px); aspect-ratio: 4 / 3; border-radius: 6px; overflow: hidden; border: 1px solid #8098b962; background: #0a1a2e; pointer-events: none; }
+.viewfinder video { display: block; width: 100%; height: 100%; object-fit: fill; transform: scaleX(-1); }
+.hand-point { position: absolute; width: 7px; height: 7px; border: 1px solid #f9e2b5; background: #eebd64; border-radius: 50%; box-shadow: 0 0 10px #ffd286a0; transform: translate(-50%, -50%); }
+.noscript { position: absolute; inset: 42% 0 auto; text-align: center; margin: 20px; }
+
+@media (max-width: 520px) {
+  .bar h1 { letter-spacing: .07em; gap: 7px; }
+  .button { padding-inline: 11px; }
+  .controls { gap: 8px; }
+  #gesture-instruction { max-width: 15em; font-size: 14px; }
+  #input-hint { font-size: 11px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button { transition: none; }
+}

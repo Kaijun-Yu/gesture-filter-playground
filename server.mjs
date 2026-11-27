@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('./', import.meta.url));
 const port = Number(process.argv[2] ?? 4177);
-const pages = new Set(['index.html', 'play.html', 'styles.css', 'play.js', 'comic-gl.js']);
+const pages = new Set(['index.html', 'play.html', 'styles.css', 'play.js', 'comic-gl.js', 'christmastree.html']);
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -15,6 +15,7 @@ const contentTypes = {
   '.jpg': 'image/jpeg',
   '.mp4': 'video/mp4',
   '.wasm': 'application/wasm',
+  '.woff2': 'font/woff2',
   '.task': 'application/octet-stream',
   '.txt': 'text/plain; charset=utf-8',
 };
@@ -37,7 +38,7 @@ createServer(async (request, response) => {
   let size;
   try {
     const path = decodeURIComponent(new URL(request.url, 'http://localhost').pathname).slice(1) || 'index.html';
-    if (!pages.has(path) && !/^(assets|vendor)\//.test(path)) throw new Error('Not found');
+    if (!pages.has(path) && !/^(assets|vendor|christmas)\//.test(path)) throw new Error('Not found');
     file = resolve(root, path);
     const remainder = relative(root, file);
     if (isAbsolute(remainder) || remainder.startsWith('..')) throw new Error('Not found');
