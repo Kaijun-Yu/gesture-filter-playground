@@ -1,7 +1,10 @@
 import * as THREE from 'three';
+import { scheduleVisionPreload } from './vision-loader.js';
 
 const canvas = document.querySelector('#cyber-canvas');
 const recenterBtn = document.querySelector('#recenter-btn');
+const recenterLabel = document.querySelector('#recenter-label');
+const langToggle = document.querySelector('#lang-toggle');
 const coordReadout = document.querySelector('#coord-readout');
 const dockLinks = [...document.querySelectorAll('.dock-link')];
 
@@ -15,7 +18,7 @@ const CARDS = [
   {
     id: 'christmas',
     tag: '01 · WINTER 3D / ASCII',
-    title: '星雪圣诞树',
+    title: { zh: '星雪圣诞树', en: 'FROST TREE' },
     href: './christmastree.html',
     image: './assets/card-christmas.jpg',
     accentA: '#5ce6ff',
@@ -28,7 +31,7 @@ const CARDS = [
   {
     id: 'comic',
     tag: '02 · COMIC FRAME',
-    title: '漫画窗',
+    title: { zh: '漫画窗', en: 'COMIC FRAME' },
     href: './play.html?mode=comic',
     image: './assets/card-comic.jpg',
     accentA: '#3cf0ff',
@@ -41,7 +44,7 @@ const CARDS = [
   {
     id: 'magic',
     tag: '03 · MAGIC GESTURE',
-    title: '魔法手势',
+    title: { zh: '魔法手势', en: 'MAGIC HANDS' },
     href: './play.html?mode=magic',
     image: './assets/card-magic.jpg',
     accentA: '#ff9642',
@@ -54,7 +57,7 @@ const CARDS = [
   {
     id: 'audio',
     tag: '04 · SONIC WARP',
-    title: '声波畸变',
+    title: { zh: '声波畸变', en: 'SONIC WARP' },
     href: './play.html?mode=audio',
     image: null,
     procedural: 'sonic',
@@ -66,6 +69,35 @@ const CARDS = [
     h: CARD_H,
   },
 ];
+
+const UI_COPY = {
+  zh: {
+    htmlLang: 'zh-CN',
+    docTitle: '手势游乐园 · GESTURE // PLAYGROUND',
+    recenter: '回到中心',
+    canvasAria: '赛博霓虹无缝手势画布，可拖动探索并点击卡片进入玩法',
+    langAria: '切换为英文界面',
+  },
+  en: {
+    htmlLang: 'en',
+    docTitle: 'GESTURE // PLAYGROUND',
+    recenter: 'RECENTER',
+    canvasAria: 'Cyberpunk seamless curved canvas — drag to explore and click any card to launch',
+    langAria: 'Switch to Chinese',
+  },
+};
+
+function getInitialLang() {
+  const param = new URLSearchParams(window.location.search).get('lang');
+  if (param === 'en' || param === 'zh') return param;
+  try {
+    const saved = localStorage.getItem('gesture-playground-lang');
+    if (saved === 'en' || saved === 'zh') return saved;
+  } catch {}
+  return 'zh';
+}
+
+let currentLang = getInitialLang();
 
 // Edge-to-edge convex curved CRT barrel distortion (no dark cutout rim; preserves chromatic dispersion!)
 const CURVATURE = 0.135;
@@ -226,7 +258,7 @@ function drawSonicArtwork(ctx, w, h) {
   ctx.restore();
 }
 
-function createCardTexture(card, img) {
+function createCardTexture(card, img, lang = 'zh') {
   const w = 960;
   const h = 720;
   const c = Object.assign(document.createElement('canvas'), { width: w, height: h });
@@ -298,17 +330,29 @@ function createCardTexture(card, img) {
   ctx.fillText(card.tag, 55, 53);
   ctx.restore();
 
-  // Large, crisp warm-white halation Chinese title (no subtitle, no arrow)
+  // Large, crisp warm-white halation title: SoukouHancho (zh) / Audiowide (en)
+  const label = card.title[lang] ?? card.title.zh;
+  const maxWidth = w - 88;
+  let fontSize = lang === 'en' ? 76 : 84;
+  const fontFamily = lang === 'en'
+    ? '"Audiowide", sans-serif'
+    : '"SoukouHancho", "Songti SC", "STSong", serif';
+
   ctx.save();
-  ctx.font = '700 88px "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif';
+  ctx.font = `400 ${fontSize}px ${fontFamily}`;
+  const measured = ctx.measureText(label).width;
+  if (measured > maxWidth) {
+    fontSize = Math.floor(fontSize * (maxWidth / measured));
+    ctx.font = `400 ${fontSize}px ${fontFamily}`;
+  }
   ctx.textBaseline = 'alphabetic';
   ctx.shadowColor = 'rgba(5, 4, 14, 0.95)';
   ctx.shadowBlur = 18;
   ctx.fillStyle = '#fff9f0';
-  ctx.fillText(card.title, 44, h - 52);
+  ctx.fillText(label, 44, h - 52);
   ctx.shadowColor = `${card.accentA}88`;
   ctx.shadowBlur = 12;
-  ctx.fillText(card.title, 44, h - 52);
+  ctx.fillText(label, 44, h - 52);
   ctx.restore();
 
   ctx.restore();
@@ -459,7 +503,7 @@ function createCyberHome() {
 
   // 2. Build the 4 Interactive Glowing Neon Portal Cards
   const cardMeshes = CARDS.map(card => {
-    const tex = createCardTexture(card, null);
+    const tex = createCardTexture(card, null, currentLang);
     tex.anisotropy = maxAniso;
     const uniforms = {
       uMap: { value: tex },
@@ -532,21 +576,66 @@ function createCyberHome() {
     mesh.position.set(card.x, card.y, card.id === 'christmas' ? 0.08 : 0.0);
     worldScene.add(mesh);
 
+    const item = { card, mesh, uniforms, hover: 0, baseZ: mesh.position.z, loadedImg: null };
+
     // Load actual generated cyberpunk artwork asynchronously (when image path is provided)
     if (card.image) {
       const img = new Image();
       img.decoding = 'async';
       img.addEventListener('load', () => {
-        const loadedTex = createCardTexture(card, img);
-        loadedTex.anisotropy = maxAniso;
-        uniforms.uMap.value.dispose();
-        uniforms.uMap.value = loadedTex;
+        item.loadedImg = img;
+        redrawCard(item);
       });
       img.src = card.image;
     }
 
-    return { card, mesh, uniforms, hover: 0, baseZ: mesh.position.z };
+    return item;
   });
+
+  function redrawCard(item) {
+    const nextTex = createCardTexture(item.card, item.loadedImg, currentLang);
+    nextTex.anisotropy = maxAniso;
+    item.uniforms.uMap.value.dispose();
+    item.uniforms.uMap.value = nextTex;
+  }
+
+  function redrawAllCards() {
+    for (const item of cardMeshes) redrawCard(item);
+  }
+
+  function applyLanguage(lang, persist = true) {
+    currentLang = lang === 'en' ? 'en' : 'zh';
+    const copy = UI_COPY[currentLang];
+    document.documentElement.lang = copy.htmlLang;
+    document.body.dataset.lang = currentLang;
+    document.title = copy.docTitle;
+    canvas.setAttribute('aria-label', copy.canvasAria);
+    recenterLabel.textContent = copy.recenter;
+    langToggle.setAttribute('aria-label', copy.langAria);
+    for (const link of dockLinks) {
+      const card = CARDS.find(c => c.id === link.dataset.card);
+      if (card) link.textContent = card.title[currentLang];
+    }
+    if (persist) {
+      try { localStorage.setItem('gesture-playground-lang', currentLang); } catch {}
+    }
+    redrawAllCards();
+  }
+
+  applyLanguage(currentLang, false);
+  langToggle.addEventListener('click', () => {
+    applyLanguage(currentLang === 'zh' ? 'en' : 'zh');
+  });
+
+  // Explicitly ensure Syne, Audiowide, and SoukouHancho are loaded before final Canvas2D card draw
+  if (document.fonts) {
+    Promise.allSettled([
+      document.fonts.load('800 22px "Syne"', 'GESTURE//PLAYGROUND'),
+      document.fonts.load('400 76px "Audiowide"', 'FROST TREE COMIC FRAME MAGIC HANDS SONIC WARP'),
+      document.fonts.load('400 84px "SoukouHancho"', '星雪圣诞树漫画窗魔法手势声波畸变回到中心'),
+      document.fonts.ready,
+    ]).then(() => redrawAllCards());
+  }
 
   // 3. Post-processing Pipeline: Bloom Extract -> Separable Blur -> Curved CRT Glass + Halation + Chromatic Aberration + Film Grain
   const postScene = new THREE.Scene();
@@ -908,6 +997,8 @@ function createCyberHome() {
 
 try {
   createCyberHome();
+  // Silently warm the shared MediaPipe WASM + hand model cache after initial canvas paint
+  scheduleVisionPreload({ includeHand: true, includeFace: false, delayMs: 1400 });
 } catch (error) {
   console.error('Failed to initialize cyberpunk home canvas', error);
 }

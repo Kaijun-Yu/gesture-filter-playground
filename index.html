@@ -5,13 +5,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#05040b">
   <meta name="description" content="赛博霓虹无缝画布 · 体验星雪圣诞树、漫画窗、魔法手势与声波畸变四大手势交互玩法。">
-  <title>手势游乐园 · Gesture Playground</title>
+  <title>GESTURE // PLAYGROUND</title>
   <link rel="icon" href="data:,">
+  <link rel="preload" href="./assets/fonts/syne-800-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./assets/fonts/audiowide-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./assets/fonts/soukou-hancho.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./assets/fonts/soukou-sc-fill.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./assets/fonts/fonts.css">
   <link rel="stylesheet" href="./home.css">
   <script type="importmap">{"imports":{"three":"./vendor/three/three.module.min.js"}}</script>
   <script type="module" src="./home.js"></script>
 </head>
-<body class="cyber-home">
+<body class="cyber-home" data-lang="zh">
   <main class="viewport" id="viewport">
     <canvas id="cyber-canvas" aria-label="赛博霓虹无缝手势画布，可拖动探索并点击卡片进入玩法"></canvas>
 
@@ -22,7 +27,12 @@
       </div>
       <div class="hud-actions">
         <button class="glass-chip" id="recenter-btn" type="button" hidden>
-          <span class="chip-dot" aria-hidden="true"></span>回到中心
+          <span class="chip-dot" aria-hidden="true"></span><span id="recenter-label">回到中心</span>
+        </button>
+        <button class="glass-chip lang-toggle" id="lang-toggle" type="button" aria-label="切换中英文语言" title="切换中英文 / Switch Language">
+          <span class="lang-opt" data-opt="zh">中</span>
+          <span class="lang-div" aria-hidden="true">/</span>
+          <span class="lang-opt" data-opt="en">EN</span>
         </button>
       </div>
     </header>
@@ -39,10 +49,10 @@
 
     <noscript>
       <div class="fallback-grid">
-        <a href="./christmastree.html">星雪圣诞树</a>
-        <a href="./play.html?mode=comic">漫画窗</a>
-        <a href="./play.html?mode=magic">魔法手势</a>
-        <a href="./play.html?mode=audio">声波畸变</a>
+        <a href="./christmastree.html">星雪圣诞树 / Frost Tree</a>
+        <a href="./play.html?mode=comic">漫画窗 / Comic Frame</a>
+        <a href="./play.html?mode=magic">魔法手势 / Magic Hands</a>
+        <a href="./play.html?mode=audio">声波畸变 / Sonic Warp</a>
       </div>
     </noscript>
   </main>

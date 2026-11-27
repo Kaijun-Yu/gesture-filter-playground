@@ -1,6 +1,7 @@
 import { createWinterScene } from './scene.js';
 import { createGestures } from './gestures.js';
-import { createHandLandmarker, createHandWorker } from './hand-tracking.js';
+import { createHandLandmarker, createHandWorker, preloadHandTracking } from './hand-tracking.js';
+import { prepareVisionAssets } from '../vision-loader.js';
 import { createChristmasMusic } from './music.js';
 
 const experience = document.querySelector('#experience');
@@ -364,12 +365,27 @@ function updateGestureBadge(state, now) {
   if (gestureBadgeText.textContent !== text) gestureBadgeText.textContent = text;
 }
 
+const trackerProgressListeners = new Set();
+let lastTrackerProgress = null;
+
+function notifyTrackerProgress(info) {
+  lastTrackerProgress = info;
+  for (const listener of trackerProgressListeners) {
+    try { listener(info); } catch {}
+  }
+}
+
 async function loadTracker(mainThread = false) {
+  const preloaded = await prepareVisionAssets({
+    includeHand: true,
+    onProgress: notifyTrackerProgress,
+  });
+  notifyTrackerProgress({ percent: 100, stage: 'init' });
   if (!mainThread && typeof OffscreenCanvas === 'function' && typeof Worker === 'function' && typeof createImageBitmap === 'function') {
-    try { return await createHandWorker(); }
+    try { return await createHandWorker({ preloaded, onProgress: notifyTrackerProgress }); }
     catch (error) { console.warn('Worker hand tracking is unavailable', error); }
   }
-  return createHandLandmarker({ preferGpu: true });
+  return createHandLandmarker({ preferGpu: true, preloaded, onProgress: notifyTrackerProgress });
 }
 
 function trackCamera(initialTracker, current) {
@@ -480,13 +496,41 @@ async function startCamera() {
     const settings = track.getSettings?.();
     if (settings?.width && settings?.height) viewfinder.style.aspectRatio = `${settings.width} / ${settings.height}`;
     video.srcObject = feed;
+    viewfinder.dataset.gesture = 'loading';
+    gestureBadge.dataset.gesture = 'loading';
+    gestureBadgeText.textContent = '正在准备识别模型…';
     trackerHud.hidden = false;
     await video.play();
     if (session !== current) return;
-    message('正在加载手势识别');
-    trackerPromise ??= loadTracker().catch(error => { trackerPromise = undefined; throw error; });
-    const tracker = await trackerPromise;
+
+    const handleProgress = ({ percent, stage }) => {
+      if (session !== current || cameraState !== 'loading') return;
+      const label = stage === 'init' || percent >= 100
+        ? '正在初始化识别引擎…'
+        : `加载识别模型 ${percent}%`;
+      gestureBadgeText.textContent = label;
+      message(label);
+    };
+
+    trackerProgressListeners.add(handleProgress);
+    if (lastTrackerProgress) handleProgress(lastTrackerProgress);
+    else message('正在准备识别模型…');
+
+    let tracker;
+    try {
+      trackerPromise ??= loadTracker().catch(error => {
+        trackerPromise = undefined;
+        lastTrackerProgress = null;
+        throw error;
+      });
+      tracker = await trackerPromise;
+    } finally {
+      trackerProgressListeners.delete(handleProgress);
+    }
     if (session !== current) return;
+    viewfinder.dataset.gesture = 'none';
+    gestureBadge.dataset.gesture = 'none';
+    gestureBadgeText.textContent = '未检测到手部';
     cameraState = 'live';
     cameraButton.dataset.live = 'true';
     cameraLabel.textContent = '关闭摄像头';
@@ -515,6 +559,8 @@ async function startCamera() {
 try {
   scene = createWinterScene(stage);
   refreshControls();
+  // Silently pre-cache MediaPipe WASM + hand model during browser idle time for fast camera startup
+  preloadHandTracking(800);
   // Default music ON with gentle fade-in on initial entry; manual pause/resume plays immediately
   music.enable({ fadeIn: true }).then(started => {
     if (started) pendingEntryFade = false;

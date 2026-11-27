@@ -1,14 +1,32 @@
 const trackingModule = import('./hand-tracking.js');
-let trackerPromise = trackingModule.then(({ createHandLandmarker }) => createHandLandmarker({ preferGpu: true }));
+let trackerPromise;
 
 function reportError(error) {
   self.postMessage({ type: 'error', message: error instanceof Error ? error.message : String(error) });
 }
 
-trackerPromise.then(() => self.postMessage({ type: 'ready' }), reportError);
+self.addEventListener('message', async ({ data }) => {
+  if (data.type === 'init') {
+    try {
+      const { createHandLandmarkerFromBuffers } = await trackingModule;
+      trackerPromise = createHandLandmarkerFromBuffers({
+        wasmLoader: data.wasmLoader,
+        wasmBinary: data.wasmBinary,
+        handModel: data.handModel,
+        preferGpu: true,
+      });
+      await trackerPromise;
+      self.postMessage({ type: 'ready' });
+    } catch (error) {
+      reportError(error);
+    }
+    return;
+  }
 
-self.addEventListener('message', async ({ data: { bitmap, time } }) => {
+  const { bitmap, time } = data;
+  if (!bitmap) return;
   try {
+    if (!trackerPromise) throw new Error('Hand tracker not initialized');
     let tracker = await trackerPromise;
     let result;
     try {
@@ -16,7 +34,9 @@ self.addEventListener('message', async ({ data: { bitmap, time } }) => {
     } catch (error) {
       if (tracker.delegate === 'GPU') {
         tracker.close?.();
-        trackerPromise = trackingModule.then(({ createHandLandmarker }) => createHandLandmarker({ preferGpu: false }));
+        trackerPromise = trackingModule.then(({ createHandLandmarkerFromBuffers }) =>
+          createHandLandmarkerFromBuffers({ preferGpu: false }),
+        );
         tracker = await trackerPromise;
         result = tracker.detectForVideo(bitmap, time);
       } else {

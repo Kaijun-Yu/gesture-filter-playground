@@ -1,0 +1,34 @@
+/* Self-hosted SIL OFL 1.1 display fonts:
+   - Syne (800): top-left cyberpunk brand title
+   - Audiowide (400): English card titles & dock
+   - SoukouHancho (装甲汉朝 / 装甲明朝 + Source Han Serif SC Bold fill for unfinished SC glyphs) */
+@font-face {
+  font-family: "Syne";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("./syne-800-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "Audiowide";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./audiowide-latin.woff2") format("woff2");
+}
+@font-face {
+  font-family: "SoukouHancho";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./soukou-hancho.woff2") format("woff2");
+  unicode-range: U+21, U+28-29, U+2C, U+2E-3A, U+3F, U+2026, U+3001-3002, U+300C-300D, U+4E00, U+4E0A-4E0B, U+4E0D-4E0E, U+4E2A, U+4E2D, U+4E5F, U+4E92, U+4EA4, U+4EAE, U+4ED6, U+4EE5, U+4EF6, U+4F1A, U+4F38, U+4F4D, U+4F4F, U+4F53, U+4F7F, U+4F8B, U+505C, U+50CF, U+5148-5149, U+514B, U+5165, U+5176, U+518D, U+5199, U+51C6, U+51FA, U+5207, U+521D, U+5230, U+5236-5237, U+524D, U+529B, U+52A0, U+5316, U+533A, U+535A, U+5360, U+5373, U+53C9, U+53CC, U+53D6, U+53E3, U+53EA-53EB, U+53EF, U+53F3, U+5408, U+540E, U+5411, U+5426, U+548C, U+5668, U+56DB, U+56DE, U+5708, U+5728, U+5730, U+5747, U+578B, U+57DF, U+589E, U+58F0, U+5927, U+5931, U+59CB, U+5B50, U+5C06, U+5C16, U+5C31, U+5DE6, U+5DF2, U+5E03, U+5E76, U+5E7B, U+5EFA, U+5F0F, U+5F15, U+5F53, U+5F62, U+5F85, U+5F8B, U+5FC3, U+5FEB, U+6210, U+6216, U+6234, U+624B, U+6253, U+627E, U+628A, U+62C7, U+62C9, U+62D2, U+62F3, U+6301, U+6307, U+634F, U+636E, U+638C, U+63A2, U+63A7, U+63CF, U+63E1, U+6492, U+64AD, U+64CE, U+652F, U+6539, U+653E, U+6548, U+6570, U+6574, U+6587, U+65AD, U+65B0, U+65B9, U+65CB, U+65E0, U+661F, U+662F, U+666F, U+66F4, U+6709, U+672A, U+672C, U+673A, U+677E, U+6790, U+67D3-67D4, U+683C, U+6846, U+68A6, U+6A21, U+6B63-6B64, U+6BD4, U+6CA1, U+6CD5, U+6CE1-6CE2, U+6D6E, U+6D88, U+6E38, U+6E90, U+6ED1, U+6F2B, U+706B, U+706F, U+70B9, U+70DF, U+71C3, U+7247, U+7279, U+72B6, U+73A9, U+7406, U+7528, U+753B, U+754C, U+7578, U+7684, U+771F, U+773C, U+793A, U+79FB, U+7A7A, U+7A97, U+7B49, U+7D22, U+7F6E, U+8033, U+82B1, U+82D7, U+82F1, U+84C4, U+8679, U+88AB, U+8981, U+89D2, U+89E3, U+89E6, U+8A00, U+8D77, U+8D8A, U+8DDD, U+8E2A, U+8F6C, U+8FD1, U+8FD4, U+8FFD, U+901A, U+901F, U+90E8, U+91CD, U+9632, U+964D, U+9650, U+96EA, U+9700, U+9713, U+971C, U+9760, U+9762, U+97F3, U+98CE, U+98DF, U+9996, U+9B54, U+9EA6, U+FF01, U+FF08-FF09, U+FF0C, U+FF1A-FF1B, U+FF1F;
+}
+@font-face {
+  font-family: "SoukouHancho";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./soukou-sc-fill.woff2") format("woff2");
+  unicode-range: U+B7, U+2014, U+4E3A, U+4E3E, U+4E50, U+5173, U+51FB, U+5212, U+522B, U+52A8, U+52BF, U+5361, U+53D1, U+53D8, U+53E6, U+5427, U+542F, U+5578, U+56ED, U+56F4, U+56FE, U+5723, U+573A, U+5904, U+5907, U+5934, U+5B9E, U+5E26, U+5E94, U+5F00, U+5F20, U+5F3A, U+62D6, U+62DF, U+62E9, U+6362, U+6444, U+644A, U+65F6, U+663E, U+6682, U+6743, U+67E5, U+6811, U+68C0, U+68F5, U+6D4B, U+6D4F, U+6E32, U+6EE4, U+7130, U+7231, U+7535, U+79BB, U+7EBF, U+7EDD, U+7EEA, U+7EED, U+7EFD, U+7F1D, U+8138, U+8282, U+89C6, U+89C8-89C9, U+8BAE, U+8BC6, U+8BD5, U+8BDE, U+8BED, U+8BF7, U+8BFB, U+8C03, U+8D25, U+8D5B, U+8F7D, U+8FB9, U+8FC7, U+8FDB-8FDC, U+8FDE, U+9009, U+952E, U+955C, U+95ED, U+9875-9876, U+9884, U+9891, U+98D8, U+9A8C;
+}

@@ -18,6 +18,7 @@ const pages = new Set([
   'gestures.js',
   'effects-2d.js',
   'audio-fx.js',
+  'vision-loader.js',
 ]);
 const contentTypes = {
   '.html': 'text/html; charset=utf-8',

@@ -1,6 +1,7 @@
 import { createAudioDistortionEngine } from './audio-fx.js';
 import { containingCrop, coveringCrop, createComicRenderer } from './comic-gl.js';
 import { createEffectsOverlay } from './effects-2d.js';
+import { prepareFaceModel, prepareVisionAssets, scheduleVisionPreload } from './vision-loader.js';
 import {
   buildSyntheticHand,
   clockwise,
@@ -82,7 +83,11 @@ const audio = createAudioDistortionEngine();
 
 let stream;
 let requestId = 0;
-let trackersPromise;
+let handTrackerPromise;
+let faceTrackerPromise;
+let faceLandmarkerInstance = null;
+const handProgressListeners = new Set();
+let lastHandProgress = null;
 let animationId = 0;
 let demoAnimationId = 0;
 let smoothedDistortion = 0;
@@ -363,29 +368,89 @@ function initHandles() {
   });
 }
 
-function prepareTrackers() {
-  trackersPromise ??= (async () => {
-    const { FilesetResolver, HandLandmarker, FaceLandmarker } = await import('./vendor/vision_bundle.mjs');
-    const wasm = new URL('./vendor/wasm', import.meta.url).href;
-    const files = await FilesetResolver.forVisionTasks(wasm);
-    const [handLandmarker, faceLandmarker] = await Promise.all([
-      HandLandmarker.createFromOptions(files, {
-        baseOptions: { modelAssetPath: new URL('./vendor/hand_landmarker.task', import.meta.url).href },
+function notifyHandProgress(info) {
+  lastHandProgress = info;
+  for (const listener of handProgressListeners) {
+    try { listener(info); } catch {}
+  }
+}
+
+async function createLandmarkerWithFallback(LandmarkerClass, files, options, preferGpu = true) {
+  const delegates = preferGpu ? ['GPU', 'CPU'] : ['CPU'];
+  let lastError;
+  for (const delegate of delegates) {
+    try {
+      const instance = await LandmarkerClass.createFromOptions(files, {
+        ...options,
+        baseOptions: { ...options.baseOptions, delegate },
+      });
+      instance.delegate = delegate;
+      return instance;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError;
+}
+
+function prepareHandTracker(onProgress) {
+  if (onProgress) {
+    handProgressListeners.add(onProgress);
+    if (lastHandProgress) onProgress(lastHandProgress);
+  }
+  handTrackerPromise ??= (async () => {
+    const assets = await prepareVisionAssets({
+      includeHand: true,
+      includeFace: false,
+      onProgress: notifyHandProgress,
+    });
+    notifyHandProgress({ percent: 100, stage: 'init' });
+    const handLandmarker = await createLandmarkerWithFallback(
+      assets.vision.HandLandmarker,
+      assets.files,
+      {
+        baseOptions: { modelAssetPath: assets.handModelPath },
         runningMode: 'VIDEO',
         numHands: 2,
-      }),
-      FaceLandmarker.createFromOptions(files, {
-        baseOptions: { modelAssetPath: new URL('./vendor/face_landmarker.task', import.meta.url).href },
-        runningMode: 'VIDEO',
-        numFaces: 1,
-      }),
-    ]);
-    return { handLandmarker, faceLandmarker };
+      },
+      true,
+    );
+    return { assets, handLandmarker };
   })().catch(error => {
-    trackersPromise = undefined;
+    handTrackerPromise = undefined;
+    lastHandProgress = null;
     throw error;
   });
-  return trackersPromise;
+
+  if (!onProgress) return handTrackerPromise;
+  return handTrackerPromise.finally(() => {
+    handProgressListeners.delete(onProgress);
+  });
+}
+
+function ensureFaceTracker() {
+  if (faceLandmarkerInstance) return Promise.resolve(faceLandmarkerInstance);
+  faceTrackerPromise ??= (async () => {
+    const { assets } = await prepareHandTracker();
+    const { faceModelPath } = await prepareFaceModel();
+    const faceLandmarker = await createLandmarkerWithFallback(
+      assets.vision.FaceLandmarker,
+      assets.files,
+      {
+        baseOptions: { modelAssetPath: faceModelPath },
+        runningMode: 'VIDEO',
+        numFaces: 1,
+      },
+      true,
+    );
+    faceLandmarkerInstance = faceLandmarker;
+    return faceLandmarker;
+  })().catch(error => {
+    console.warn('Face tracker lazy init unavailable', error);
+    faceTrackerPromise = undefined;
+    return null;
+  });
+  return faceTrackerPromise;
 }
 
 function stopCamera(message = '') {
@@ -405,7 +470,10 @@ function stopCamera(message = '') {
   updateDemoLoop();
 }
 
-function startFrames({ handLandmarker, faceLandmarker }) {
+function startFrames({ assets, handLandmarker: initialHandLandmarker }) {
+  let handLandmarker = initialHandLandmarker;
+  let handFallbackPending = false;
+  let faceFallbackPending = false;
   let lastInference = -Infinity;
   let lastTime = -1;
   let lastValidComic = -Infinity;
@@ -422,6 +490,10 @@ function startFrames({ handLandmarker, faceLandmarker }) {
   let lastHeartDetected = -Infinity;
   let lastAudioDistance = null;
 
+  if (activeMode === 'magic' || activeMode === 'audio') {
+    ensureFaceTracker();
+  }
+
   function frame(now) {
     if (sourceMode !== 'camera') return;
     animationId = requestAnimationFrame(frame);
@@ -431,7 +503,7 @@ function startFrames({ handLandmarker, faceLandmarker }) {
     const crop = containingCrop(canvas.width, canvas.height, feed.videoWidth, feed.videoHeight);
     const aspect = canvas.width / Math.max(1, canvas.height);
 
-    if (feed.currentTime !== lastTime && now - lastInference >= 36) {
+    if (feed.currentTime !== lastTime && now - lastInference >= 36 && !handFallbackPending) {
       lastTime = feed.currentTime;
       lastInference = now;
 
@@ -439,14 +511,58 @@ function startFrames({ handLandmarker, faceLandmarker }) {
       let rawFaces = [];
       try {
         rawHands = handLandmarker.detectForVideo(feed, now).landmarks || [];
-        // Run face tracker whenever eyes/head-top/face-center are needed (magic or audio mode).
-        if (activeMode === 'magic' || activeMode === 'audio') {
-          rawFaces = faceLandmarker.detectForVideo(feed, now).faceLandmarks || [];
-        }
       } catch (error) {
+        if (handLandmarker.delegate === 'GPU') {
+          handFallbackPending = true;
+          handLandmarker.close?.();
+          createLandmarkerWithFallback(
+            assets.vision.HandLandmarker,
+            assets.files,
+            { baseOptions: { modelAssetPath: assets.handModelPath }, runningMode: 'VIDEO', numHands: 2 },
+            false,
+          ).then(cpuTracker => {
+            handLandmarker = cpuTracker;
+            handTrackerPromise = Promise.resolve({ assets, handLandmarker: cpuTracker });
+            handFallbackPending = false;
+          }).catch(fallbackError => {
+            console.error(fallbackError);
+            handFallbackPending = false;
+            stopCamera('手势追踪中断，可以重新开启摄像头');
+          });
+          return;
+        }
         console.error(error);
         stopCamera('手势追踪中断，可以重新开启摄像头');
         return;
+      }
+
+      // Run face tracker asynchronously when loaded for magic/audio modes without blocking hand tracking.
+      if ((activeMode === 'magic' || activeMode === 'audio') && faceLandmarkerInstance && !faceFallbackPending) {
+        try {
+          rawFaces = faceLandmarkerInstance.detectForVideo(feed, now).faceLandmarks || [];
+        } catch (faceError) {
+          if (faceLandmarkerInstance.delegate === 'GPU') {
+            faceFallbackPending = true;
+            const prev = faceLandmarkerInstance;
+            faceLandmarkerInstance = null;
+            prev.close?.();
+            prepareFaceModel().then(({ faceModelPath }) =>
+              createLandmarkerWithFallback(
+                assets.vision.FaceLandmarker,
+                assets.files,
+                { baseOptions: { modelAssetPath: faceModelPath }, runningMode: 'VIDEO', numFaces: 1 },
+                false,
+              ),
+            ).then(cpuFace => {
+              faceLandmarkerInstance = cpuFace;
+              faceFallbackPending = false;
+            }).catch(() => {
+              faceFallbackPending = false;
+            });
+          } else {
+            console.warn('Face tracking frame error', faceError);
+          }
+        }
       }
 
       lastStageHands = rawHands.map(h => mapLandmarksToStage(h, crop, true));
@@ -591,17 +707,22 @@ async function startCamera() {
     if (current !== requestId) return;
     cameraOpened = true;
     sourceLabel.textContent = '摄像头';
-    showStatus('正在加载手势与人脸模型');
+    showStatus('正在准备手势识别模型…');
     syncSize();
     renderWebGL(feed, containingCrop(canvas.width, canvas.height, feed.videoWidth, feed.videoHeight), initialCorners, 0, true);
 
-    const trackers = await prepareTrackers();
+    const trackerBundle = await prepareHandTracker(({ percent, stage }) => {
+      if (current !== requestId || sourceMode !== 'loading') return;
+      showStatus(stage === 'init' || percent >= 100
+        ? '正在初始化手势引擎…'
+        : `正在加载手势模型 ${percent}%`);
+    });
     if (current !== requestId) return;
     sourceMode = 'camera';
     cameraToggle.textContent = '关闭摄像头';
     syncUIForMode();
-    showStatus(activeMode === 'comic' ? '把双手放进画面' : '模型就绪，开始比划手势吧');
-    startFrames(trackers);
+    showStatus(activeMode === 'comic' ? '把双手放进画面' : '手势识别已就绪，开始比划吧');
+    startFrames(trackerBundle);
   } catch (error) {
     if (current !== requestId) return;
     console.error(error);
@@ -619,6 +740,9 @@ function setMode(nextMode) {
   activeMode = nextMode;
   fxOverlay?.reset();
   syncUIForMode();
+  if (sourceMode === 'camera' && (nextMode === 'magic' || nextMode === 'audio')) {
+    ensureFaceTracker();
+  }
   if (sourceMode === 'demo') {
     updateDemoLoop();
   }
@@ -728,6 +852,9 @@ try {
     if (sourceMode === 'demo') startCamera();
     else stopCamera();
   });
+
+  // Silently warm WASM + hand model cache during idle time (and face model afterwards if needed)
+  scheduleVisionPreload({ includeHand: true, includeFace: activeMode !== 'comic', delayMs: 800 });
 
   window.addEventListener('pagehide', () => {
     audio.stop();
