@@ -303,7 +303,7 @@ export function createBloom(renderer) {
     setAscii(enabled) {
       output.uniforms.ascii.value = enabled ? 1 : 0;
     },
-    render(scene, view, progress, time = 0) {
+    render(scene, view, progress, time = 0, finishPulse = 0) {
       const isAscii = output.uniforms.ascii.value > 0.5;
       const primaryTarget = isAscii ? asciiScene : sceneColor;
       renderer.setRenderTarget(primaryTarget);
@@ -321,7 +321,9 @@ export function createBloom(renderer) {
         blur.uniforms.stepSize.value.set(0, 1 / highlights.height);
         pass(blur, blurred);
       }
-      output.uniforms.amount.value = progress > 0 ? .79 * THREE.MathUtils.smoothstep(progress, 0, .08) : 0;
+      output.uniforms.amount.value = progress > 0
+        ? (.79 + finishPulse * .20) * THREE.MathUtils.smoothstep(progress, 0, .08)
+        : 0;
       output.uniforms.clock.value = time;
       if (isAscii) {
         output.uniforms.cameraNear.value = view.near;

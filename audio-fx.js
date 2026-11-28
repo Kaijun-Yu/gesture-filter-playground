@@ -52,13 +52,13 @@ class BitcrusherProcessor extends AudioWorkletProcessor {
 registerProcessor('bitcrusher-processor', BitcrusherProcessor);
 `;
 
-function makeDistortionCurve(amount = 60) {
+function makeDistortionCurve(amount = 22) {
   const samples = 1024;
   const curve = new Float32Array(samples);
   for (let i = 0; i < samples; i++) {
     const x = (i * 2) / samples - 1;
-    // Asymmetric soft-to-aggressive overdrive curve for rich harmonic fuzz.
-    const driven = x * (1 + amount * 0.14);
+    // Asymmetric soft-to-aggressive overdrive curve with controlled base gain (avoids sudden loudness jump).
+    const driven = x * (1 + amount * 0.10);
     const asym = driven + 0.12 * Math.sin(driven * 3.1);
     curve[i] = Math.tanh(asym);
   }
@@ -118,21 +118,29 @@ export function createAudioDistortionEngine() {
     preGain.gain.value = 1;
 
     shaper = ctx.createWaveShaper();
-    shaper.curve = makeDistortionCurve(65);
+    shaper.curve = makeDistortionCurve(24);
     shaper.oversample = '4x';
 
     toneFilter = ctx.createBiquadFilter();
     toneFilter.type = 'lowpass';
     toneFilter.frequency.value = 12000;
-    toneFilter.Q.value = 0.8;
+    toneFilter.Q.value = 0.75;
+
+    // Dedicated wet-path dynamics leveler keeps saturated RMS locked to dry loudness across all sources.
+    const wetLeveler = ctx.createDynamicsCompressor();
+    wetLeveler.threshold.value = -16;
+    wetLeveler.knee.value = 14;
+    wetLeveler.ratio.value = 10;
+    wetLeveler.attack.value = 0.002;
+    wetLeveler.release.value = 0.11;
 
     wetGain = ctx.createGain();
     wetGain.gain.value = 0;
 
     const compressor = ctx.createDynamicsCompressor();
-    compressor.threshold.value = -10;
-    compressor.knee.value = 18;
-    compressor.ratio.value = 8;
+    compressor.threshold.value = -12;
+    compressor.knee.value = 16;
+    compressor.ratio.value = 6;
     compressor.attack.value = 0.003;
     compressor.release.value = 0.14;
 
@@ -171,7 +179,7 @@ export function createAudioDistortionEngine() {
     inputBus.connect(dryGain);
     dryGain.connect(compressor);
 
-    // Wet distortion path
+    // Wet distortion path (auto-leveled so distortion changes timbre without boosting loudness)
     inputBus.connect(preGain);
     preGain.connect(shaper);
     if (crusher) {
@@ -180,7 +188,8 @@ export function createAudioDistortionEngine() {
     } else {
       shaper.connect(toneFilter);
     }
-    toneFilter.connect(wetGain);
+    toneFilter.connect(wetLeveler);
+    wetLeveler.connect(wetGain);
     wetGain.connect(compressor);
 
     compressor.connect(masterGain);
@@ -201,12 +210,17 @@ export function createAudioDistortionEngine() {
     const now = ctx.currentTime;
     const smooth = 0.045;
 
-    // Crossfade dry -> heavily saturated & bitcrushed wet signal.
-    const dry = 1 - distortion * 0.88;
-    const wet = Math.pow(distortion, 0.78) * 0.96;
-    const drive = 1 + Math.pow(distortion, 1.35) * 14;
-    const cutoff = 12000 * Math.pow(0.14, distortion); // 12kHz -> ~1.68kHz gritty cyber band
-    const q = 0.8 + distortion * 5.2;
+    // Constant-loudness dry/wet morph: auto-compensate WaveShaper RMS boost and mid-band resonance
+    // so cranking distortion transforms texture cleanly without making the audio louder.
+    const drive = 1 + Math.pow(distortion, 1.35) * 13;
+    const wetMix = Math.pow(distortion, 0.88);
+    const dry = 1 - wetMix * 0.90;
+    // Saturating a ~0.22 RMS signal with tanh(3.4 * drive * x) lifts its RMS ~2.8x..4.0x;
+    // trim the wet branch proportionally (plus subtle Fletcher-Munson mid-band compensation).
+    const driveComp = 1 / (1 + Math.pow(drive, 0.56) * 0.72);
+    const wet = wetMix * driveComp * 0.68;
+    const cutoff = 12000 * Math.pow(0.16, distortion); // 12kHz -> ~1.9kHz gritty cyber band
+    const q = 0.75 + distortion * 1.95; // Musical resonant bite without piercing +15dB loudness spike
 
     dryGain.gain.setTargetAtTime(dry, now, smooth);
     wetGain.gain.setTargetAtTime(wet, now, smooth);

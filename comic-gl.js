@@ -1,3 +1,5 @@
+const ASCII_GLYPHS = '  .,:;-~=+*x#%$@';
+
 const vertexSource = `
 attribute vec2 a_position;
 varying vec2 v_position;
@@ -10,14 +12,18 @@ const fragmentSource = `
 precision highp float;
 varying vec2 v_position;
 uniform sampler2D u_frame;
+uniform sampler2D u_atlas;
 uniform vec2 u_corners[4];
 uniform vec2 u_size;
 uniform vec2 u_pixel;
 uniform vec2 u_crop;
+uniform vec2 u_cell;
 uniform float u_mirror;
 uniform float u_opacity;
 uniform float u_glitch;
 uniform float u_time;
+uniform float u_ascii;
+uniform float u_glyphCount;
 
 float lightness(vec3 color) {
   return dot(color, vec3(0.299, 0.587, 0.114));
@@ -53,7 +59,7 @@ float quadDistance(vec2 pointPx, vec2 c0, vec2 c1, vec2 c2, vec2 c3) {
   return min(halfPlane, -segDist / 1.75);
 }
 
-vec3 comic(vec2 uv, vec3 original) {
+vec3 comic(vec2 uv, vec2 pos, vec3 original) {
   vec2 delta = u_pixel * 1.65;
   vec3 above = texture2D(u_frame, uv - vec2(0.0, delta.y)).rgb;
   vec3 below = texture2D(u_frame, uv + vec2(0.0, delta.y)).rgb;
@@ -74,7 +80,7 @@ vec3 comic(vec2 uv, vec3 original) {
   color = mix(color, paper, smoothstep(0.77, 0.81, tone));
 
   // The dot pattern is fixed to the frame, so it moves smoothly through the mask.
-  vec2 p = v_position * u_size;
+  vec2 p = pos * u_size;
   vec2 rotated = vec2(p.x + p.y, p.y - p.x) * 0.7071;
   vec2 cell = fract(rotated / max(5.0, u_size.x * 0.007)) - 0.5;
   float dotRadius = mix(0.38, 0.09, tone);
@@ -83,19 +89,18 @@ vec3 comic(vec2 uv, vec3 original) {
   return mix(color, ink, smoothstep(0.07, 0.25, contour) * 0.94);
 }
 
-void main() {
-  vec2 uv = (v_position - 0.5) * u_crop + 0.5;
+vec4 evaluateStage(vec2 pos) {
+  vec2 uv = (pos - 0.5) * u_crop + 0.5;
   uv.x = mix(uv.x, 1.0 - uv.x, u_mirror);
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
-    gl_FragColor = vec4(0.086, 0.082, 0.129, 1.0);
-    return;
+    return vec4(0.04, 0.05, 0.09, 0.0);
   }
   vec3 original = texture2D(u_frame, uv).rgb;
   if (u_glitch > 0.005) {
-    float band = floor(v_position.y * 26.0);
+    float band = floor(pos.y * 26.0);
     float bandNoise = fract(sin(band * 127.1 + floor(u_time * 15.0) * 311.7) * 43758.5453);
     float sliceShift = step(0.87 - u_glitch * 0.14, bandNoise) * (bandNoise - 0.5) * 0.055 * u_glitch;
-    float rgbSplit = (0.0015 + u_glitch * 0.012);
+    float rgbSplit = (0.0015 + u_glitch * 0.013);
     vec2 uvR = clamp(uv + vec2(sliceShift + rgbSplit, 0.0), 0.0, 1.0);
     vec2 uvG = clamp(uv + vec2(sliceShift, 0.0), 0.0, 1.0);
     vec2 uvB = clamp(uv + vec2(sliceShift - rgbSplit, 0.0), 0.0, 1.0);
@@ -104,21 +109,19 @@ void main() {
       texture2D(u_frame, uvG).g,
       texture2D(u_frame, uvB).b
     );
-    float scanline = 1.0 - 0.10 * u_glitch * step(0.5, fract(v_position.y * u_size.y * 0.25));
+    float scanline = 1.0 - 0.10 * u_glitch * step(0.5, fract(pos.y * u_size.y * 0.25));
     original *= scanline;
   }
   if (u_opacity <= 0.0) {
-    gl_FragColor = vec4(original, 1.0);
-    return;
+    return vec4(original, 0.0);
   }
 
-  vec2 p = v_position * u_size;
+  vec2 p = pos * u_size;
   vec2 c0 = u_corners[0] * u_size;
   vec2 c1 = u_corners[1] * u_size;
   vec2 c2 = u_corners[2] * u_size;
   vec2 c3 = u_corners[3] * u_size;
 
-  // Scale border thickness with canvas size and gracefully shrink for very small quads.
   vec2 center = (c0 + c1 + c2 + c3) * 0.25;
   float inradius = max(0.0, quadDistance(center, c0, c1, c2, c3));
   float unit = max(min(u_size.x, u_size.y) / 720.0, 0.65) * clamp(inradius / 70.0, 0.28, 1.0);
@@ -143,7 +146,6 @@ void main() {
     min(e2.x - e2.z * innerWobble, e3.x - e3.z * innerWobble)
   );
 
-  // Layered comic-panel frame: hard ink drop shadow -> bold outer ink -> warm paper rim -> inner ink rule.
   float outerExtent = 3.8 * unit;
   float paperStart = 1.5 * unit;
   float innerInkStart = 5.0 * unit;
@@ -153,10 +155,8 @@ void main() {
   vec2 shadowOffset = vec2(7.0, 8.0) * unit;
   float shadowDist = quadDistance(p - shadowOffset, c0, c1, c2, c3);
 
-  // Quick skip when completely outside both the comic border and its offset drop shadow.
   if (outerDist < -(outerExtent + aa) && shadowDist < -(outerExtent + aa)) {
-    gl_FragColor = vec4(original, 1.0);
-    return;
+    return vec4(original, 0.0);
   }
 
   vec3 frameInk = vec3(0.055, 0.04, 0.125);
@@ -166,8 +166,8 @@ void main() {
   float shadowMask = smoothstep(-outerExtent - aa, -outerExtent + aa, shadowDist) * (1.0 - outerMask);
 
   vec3 color = original;
+  float inPanel = 0.0;
   if (shadowMask > 0.0) {
-    // Subtle printed halftone texture inside the hard comic offset shadow.
     vec2 rotShadow = vec2(p.x + p.y, p.y - p.x) * 0.7071;
     vec2 shadowCell = fract(rotShadow / max(4.5, u_size.x * 0.0058)) - 0.5;
     float shadowDot = 1.0 - smoothstep(0.24, 0.34, length(shadowCell));
@@ -184,13 +184,76 @@ void main() {
     panelColor = mix(panelColor, framePaper, paperMask);
     panelColor = mix(panelColor, frameInk, innerInkMask);
     if (comicMask > 0.0) {
-      panelColor = mix(panelColor, comic(uv, original), comicMask);
+      panelColor = mix(panelColor, comic(uv, pos, original), comicMask);
     }
     color = mix(color, panelColor, outerMask * u_opacity);
+    inPanel = outerMask * u_opacity;
   }
 
-  gl_FragColor = vec4(color, 1.0);
+  return vec4(color, inPanel);
+}
+
+void main() {
+  if (u_ascii < 0.5) {
+    vec4 stageCol = evaluateStage(v_position);
+    gl_FragColor = vec4(stageCol.rgb, 1.0);
+    return;
+  }
+
+  // Real-time GPU ASCII terminal rendering with rich color fidelity, glitch tear & comic panel contrast
+  vec2 cells = max(vec2(28.0), floor(u_size / u_cell));
+  vec2 cellIndex = floor(v_position * cells);
+  vec2 cellPos = (cellIndex + 0.5) / cells;
+  vec2 localUv = fract(v_position * cells);
+
+  vec4 cMain = evaluateStage(cellPos);
+  vec2 delta = 0.25 / cells;
+  vec3 cA = evaluateStage(clamp(cellPos + vec2(-delta.x, -delta.y), 0.0, 1.0)).rgb;
+  vec3 cB = evaluateStage(clamp(cellPos + vec2( delta.x,  delta.y), 0.0, 1.0)).rgb;
+  vec3 col = mix((cMain.rgb * 2.0 + cA + cB) * 0.25, max(cMain.rgb, max(cA, cB)), 0.28);
+
+  float luma = lightness(col);
+  float hash = fract(sin(dot(cellIndex, vec2(127.1, 311.7))) * 43758.5453);
+  float shimmer = sin(u_time * 3.4 + hash * 6.28318) * (0.022 + u_glitch * 0.08);
+  float mapped = clamp(pow(max(0.0, luma + shimmer), 0.88) * 1.12, 0.0, 0.999);
+  float idx = floor(mapped * u_glyphCount);
+
+  vec2 atlasUv = vec2((idx + clamp(localUv.x, 0.02, 0.98)) / u_glyphCount, clamp(localUv.y, 0.02, 0.98));
+  float mask = texture2D(u_atlas, atlasUv).r;
+
+  // Keep comic-panel cells vividly saturated; outside has sleek cyber-obsidian terminal grading
+  float satBoost = mix(1.18, 1.38, cMain.a);
+  vec3 vivid = mix(vec3(luma), col, satBoost);
+  vec3 coolTint = mix(vec3(0.76, 0.92, 1.08), vec3(1.06, 1.0, 0.96), cMain.a);
+  vec3 glyphColor = clamp(vivid * coolTint * 1.24, 0.0, 1.35);
+
+  vec2 vig = (v_position - 0.5) * vec2(1.15, 1.05);
+  vec3 terminalBg = mix(vec3(0.020, 0.028, 0.056), vec3(0.052, 0.068, 0.118), exp(-dot(vig, vig) * 2.4));
+  vec3 cellGlow = glyphColor * (0.085 + 0.07 * cMain.a) * luma;
+  float scan = 0.96 + 0.04 * sin(v_position.y * u_size.y * 1.5);
+  vec3 outColor = (terminalBg + cellGlow + glyphColor * mask * 1.08) * scan;
+  gl_FragColor = vec4(outColor, 1.0);
 }`;
+
+function createAsciiAtlas() {
+  const cellW = 48;
+  const cellH = 64;
+  const canvas = Object.assign(document.createElement('canvas'), {
+    width: cellW * ASCII_GLYPHS.length,
+    height: cellH,
+  });
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000000';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = '700 48px "SF Mono", Menlo, Consolas, "Courier New", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (let i = 0; i < ASCII_GLYPHS.length; i++) {
+    ctx.fillText(ASCII_GLYPHS[i], i * cellW + cellW * 0.5, cellH * 0.53);
+  }
+  return canvas;
+}
 
 function compile(gl, type, source) {
   const shader = gl.createShader(type);
@@ -235,27 +298,48 @@ export function createComicRenderer(canvas) {
   gl.enableVertexAttribArray(position);
   gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
 
-  gl.bindTexture(gl.TEXTURE_2D, gl.createTexture());
+  // Texture unit 0: video/demo source frame
+  const frameTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE0);
+  gl.bindTexture(gl.TEXTURE_2D, frameTex);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
+  // Texture unit 1: GPU ASCII glyph atlas
+  const atlasTex = gl.createTexture();
+  gl.activeTexture(gl.TEXTURE1);
+  gl.bindTexture(gl.TEXTURE_2D, atlasTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, createAsciiAtlas());
+
+  gl.uniform1i(gl.getUniformLocation(program, 'u_frame'), 0);
+  gl.uniform1i(gl.getUniformLocation(program, 'u_atlas'), 1);
+  gl.uniform1f(gl.getUniformLocation(program, 'u_glyphCount'), ASCII_GLYPHS.length);
+
   const cornersLocation = gl.getUniformLocation(program, 'u_corners[0]');
   const sizeLocation = gl.getUniformLocation(program, 'u_size');
   const pixelLocation = gl.getUniformLocation(program, 'u_pixel');
   const cropLocation = gl.getUniformLocation(program, 'u_crop');
+  const cellLocation = gl.getUniformLocation(program, 'u_cell');
   const mirrorLocation = gl.getUniformLocation(program, 'u_mirror');
   const opacityLocation = gl.getUniformLocation(program, 'u_opacity');
   const glitchLocation = gl.getUniformLocation(program, 'u_glitch');
   const timeLocation = gl.getUniformLocation(program, 'u_time');
+  const asciiLocation = gl.getUniformLocation(program, 'u_ascii');
   const coordinates = new Float32Array(8);
   let uploaded = null;
   let uploadedTime = -1;
 
-  return function render(source, crop, corners, opacity, mirror = false, glitch = 0, timeSec = 0) {
+  return function render(source, crop, corners, opacity, mirror = false, glitch = 0, timeSec = 0, ascii = 0) {
     const sourceTime = source.currentTime ?? 0;
     if (source !== uploaded || sourceTime !== uploadedTime) {
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, frameTex);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, source);
       const width = source.videoWidth ?? source.naturalWidth;
       const height = source.videoHeight ?? source.naturalHeight;
@@ -264,13 +348,16 @@ export function createComicRenderer(canvas) {
       uploadedTime = sourceTime;
     }
 
+    const cellBase = Math.max(7.5, Math.min(13.5, Math.min(canvas.width, canvas.height) / 76));
     gl.viewport(0, 0, canvas.width, canvas.height);
     gl.uniform2f(sizeLocation, canvas.width, canvas.height);
     gl.uniform2f(cropLocation, crop[0], crop[1]);
+    gl.uniform2f(cellLocation, cellBase * 0.74, cellBase * 1.12);
     gl.uniform1f(mirrorLocation, Number(mirror));
     gl.uniform1f(opacityLocation, opacity);
     gl.uniform1f(glitchLocation, glitch);
     gl.uniform1f(timeLocation, timeSec);
+    gl.uniform1f(asciiLocation, Number(ascii));
     corners.forEach(([x, y], index) => {
       coordinates[index * 2] = x;
       coordinates[index * 2 + 1] = y;

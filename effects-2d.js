@@ -37,71 +37,121 @@ function drawSoftMote(ctx, x, y, r, rgbaCore, rgbaMid, alpha = 1) {
   ctx.restore();
 }
 
-// Dreamy, hazy, romantic translucent heart (zero hard black outline; rich rose-petal depth + soft film halation).
+// Pre-baked 3D volumetric pink halftone dot-matrix heart sprites (crisp pop-art dot shading).
+const halftoneHeartCache = new Map();
+
+function smoothstep(e0, e1, x) {
+  const t = clamp((x - e0) / (e1 - e0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function getHalftoneHeartSprite(tier = 'hero', warm = false) {
+  const key = `${tier}-${warm ? 'w' : 'c'}`;
+  const cached = halftoneHeartCache.get(key);
+  if (cached) return cached;
+
+  const isHero = tier === 'hero';
+  const dim = isHero ? 320 : 160;
+  const cols = isHero ? 29 : 15;
+  const rows = isHero ? 27 : 14;
+  const sprite = Object.assign(document.createElement('canvas'), { width: dim, height: dim });
+  const sctx = sprite.getContext('2d');
+  const cx = dim * 0.5;
+  const cy = dim * 0.5;
+  const span = dim * 0.78;
+  const pitchX = span / (cols - 1);
+  const pitchY = span / (rows - 1);
+  const pitch = Math.min(pitchX, pitchY);
+
+  // Subtle ambient rosy halation behind the halftone dot matrix
+  const backGlow = sctx.createRadialGradient(cx, cy - dim * 0.02, dim * 0.05, cx, cy, dim * 0.48);
+  backGlow.addColorStop(0, warm ? 'rgba(255, 118, 178, 0.28)' : 'rgba(255, 92, 174, 0.28)');
+  backGlow.addColorStop(0.58, warm ? 'rgba(255, 86, 154, 0.10)' : 'rgba(244, 64, 152, 0.10)');
+  backGlow.addColorStop(1, 'rgba(255, 64, 148, 0)');
+  sctx.fillStyle = backGlow;
+  sctx.fillRect(0, 0, dim, dim);
+
+  // Normalized upper-left directional light vector matching the 3D pillow halftone reference
+  const lx = -0.54;
+  const ly = -0.62;
+  const lz = 0.57;
+
+  // Color stops for luminous pink 3D dot shading:
+  // highlight (smaller airy dots) -> creamy sakura pink; mid -> vibrant neon pink; shadow (bold dense dots) -> deep rose-magenta
+  const hiRgb = warm ? [255, 224, 236] : [255, 218, 240];
+  const midRgb = warm ? [255, 108, 168] : [255, 90, 172];
+  const deepRgb = warm ? [242, 42, 118] : [236, 36, 128];
+
+  for (let row = 0; row < rows; row++) {
+    const gy = (row / (rows - 1) - 0.5) * 2; // -1 top .. +1 bottom
+    for (let col = 0; col < cols; col++) {
+      const gx = (col / (cols - 1) - 0.5) * 2; // -1 left .. +1 right
+
+      // Wide, plump heart implicit field matching the graphic halftone reference
+      const x = gx * 0.96;
+      const yUp = -gy * 1.08 + 0.14; // +yUp points upward
+      const yAdj = yUp - 0.54 * Math.pow(Math.abs(x), 0.72);
+      const dist2 = x * x + yAdj * yAdj;
+      const limit = 0.78;
+      if (dist2 >= limit) continue;
+
+      const interior = clamp((limit - dist2) / limit, 0, 1);
+      const edgeTaper = smoothstep(0.0, 0.24, interior);
+
+      // 3D inflated pillow surface normal
+      const nx = clamp(gx * 0.85, -0.92, 0.92);
+      const ny = clamp(gy * 0.88, -0.92, 0.92);
+      const nz = Math.sqrt(Math.max(0.06, 1 - Math.min(0.94, nx * nx + ny * ny) * 0.78));
+      const ndotl = clamp(nx * lx + ny * ly + nz * lz, 0, 1);
+
+      // Shadow-weighted halftone dot radius (airy smaller dots on upper-left highlight, bold kissing dots on lower-right curve & bottom tip)
+      const shadowWeight = 1 - ndotl;
+      const lowerBellyBoost = smoothstep(-0.15, 0.85, gy * 0.72 + gx * 0.42);
+      const density = clamp(0.24 + shadowWeight * 0.50 + lowerBellyBoost * 0.26, 0.20, 1.0);
+      const dotR = pitch * (0.16 + density * 0.46) * (0.34 + 0.66 * edgeTaper);
+      if (dotR < 0.7) continue;
+
+      // Smooth pink tonal progression across the 3D form
+      const tone = clamp(shadowWeight * 0.68 + lowerBellyBoost * 0.32, 0, 1);
+      let rC, gC, bC;
+      if (tone < 0.48) {
+        const t = tone / 0.48;
+        rC = Math.round(lerp(hiRgb[0], midRgb[0], t));
+        gC = Math.round(lerp(hiRgb[1], midRgb[1], t));
+        bC = Math.round(lerp(hiRgb[2], midRgb[2], t));
+      } else {
+        const t = (tone - 0.48) / 0.52;
+        rC = Math.round(lerp(midRgb[0], deepRgb[0], t));
+        gC = Math.round(lerp(midRgb[1], deepRgb[1], t));
+        bC = Math.round(lerp(midRgb[2], deepRgb[2], t));
+      }
+
+      const px = cx + gx * (span * 0.5);
+      const py = cy + gy * (span * 0.5);
+      const dotAlpha = 0.52 + 0.48 * edgeTaper;
+
+      sctx.fillStyle = `rgba(${rC}, ${gC}, ${bC}, ${dotAlpha.toFixed(3)})`;
+      sctx.beginPath();
+      sctx.arc(px, py, dotR, 0, Math.PI * 2);
+      sctx.fill();
+    }
+  }
+
+  halftoneHeartCache.set(key, sprite);
+  return sprite;
+}
+
+// Draws our crisp pink 3D halftone dot-matrix heart using pre-baked sprites (zero flat blurry blobs).
 function drawDreamyHeart(ctx, x, y, size, rotation = 0, alpha = 1, warmth = 0) {
+  const tier = size >= 28 ? 'hero' : 'mini';
+  const sprite = getHalftoneHeartSprite(tier, warmth > 0.5);
+  const drawSpan = size * 2.55;
+
   ctx.save();
   ctx.translate(x, y);
   ctx.rotate(rotation);
   ctx.globalAlpha = alpha;
-
-  // 1. Wide atmospheric rose-peach film halation glow (gentle so it never washes out the heart shape)
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  const halo = ctx.createRadialGradient(0, -size * 0.04, size * 0.12, 0, 0, size * 2.25);
-  halo.addColorStop(0, warmth > 0.5 ? 'rgba(255, 152, 178, 0.36)' : 'rgba(244, 108, 168, 0.36)');
-  halo.addColorStop(0.45, 'rgba(238, 96, 158, 0.16)');
-  halo.addColorStop(0.78, 'rgba(198, 102, 194, 0.07)');
-  halo.addColorStop(1, 'rgba(235, 90, 150, 0)');
-  ctx.fillStyle = halo;
-  ctx.beginPath();
-  ctx.arc(0, 0, size * 2.25, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
-  // 2. Soft translucent rose-petal heart silhouette (rich blush-crimson depth without cartoon outlines)
-  const bodyGrad = ctx.createRadialGradient(
-    -size * 0.24, -size * 0.24, size * 0.06,
-    0, size * 0.08, size * 1.08,
-  );
-  if (warmth > 0.5) {
-    bodyGrad.addColorStop(0, 'rgba(255, 206, 212, 0.88)');
-    bodyGrad.addColorStop(0.32, 'rgba(252, 118, 158, 0.82)');
-    bodyGrad.addColorStop(0.72, 'rgba(220, 56, 116, 0.72)');
-    bodyGrad.addColorStop(1, 'rgba(168, 34, 92, 0.46)');
-  } else {
-    bodyGrad.addColorStop(0, 'rgba(255, 198, 224, 0.86)');
-    bodyGrad.addColorStop(0.34, 'rgba(246, 104, 164, 0.80)');
-    bodyGrad.addColorStop(0.74, 'rgba(212, 48, 118, 0.70)');
-    bodyGrad.addColorStop(1, 'rgba(156, 32, 98, 0.44)');
-  }
-
-  ctx.save();
-  ctx.shadowColor = 'rgba(245, 96, 158, 0.55)';
-  ctx.shadowBlur = size * 0.48;
-  drawHeartPath(ctx, 0, 0, size);
-  ctx.fillStyle = bodyGrad;
-  ctx.fill();
-
-  // Subtle luminous champagne-rose rim
-  ctx.shadowBlur = 0;
-  ctx.lineWidth = Math.max(0.7, size * 0.04);
-  ctx.strokeStyle = 'rgba(255, 224, 238, 0.46)';
-  ctx.stroke();
-  ctx.restore();
-
-  // 3. Delicate off-center silk specular bloom (keeps center rose-pink, not blown-out white)
-  ctx.save();
-  ctx.globalCompositeOperation = 'screen';
-  const shine = ctx.createRadialGradient(-size * 0.34, -size * 0.28, 0, -size * 0.30, -size * 0.24, size * 0.34);
-  shine.addColorStop(0, 'rgba(255, 246, 248, 0.58)');
-  shine.addColorStop(0.55, 'rgba(255, 196, 222, 0.18)');
-  shine.addColorStop(1, 'rgba(255, 190, 220, 0)');
-  ctx.fillStyle = shine;
-  ctx.beginPath();
-  ctx.arc(-size * 0.30, -size * 0.24, size * 0.34, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.restore();
-
+  ctx.drawImage(sprite, -drawSpan * 0.5, -drawSpan * 0.5, drawSpan, drawSpan);
   ctx.restore();
 }
 
@@ -517,35 +567,33 @@ export function createEffectsOverlay(canvas) {
       const bob = Math.sin(timeSec * 2.4 + idx * 1.6) * h * 0.015;
       const hx = heart.anchor[0] * w;
       const hy = heart.anchor[1] * h + bob;
-      const baseSize = clamp(heart.scale * h * 0.42, 26, 66);
-      const breath = 1 + 0.06 * Math.sin(timeSec * 3.4 + idx);
-      const size = baseSize * breath * (0.65 + 0.35 * intensity);
-      const tilt = Math.sin(timeSec * 1.8 + idx) * 0.08;
+      const baseSize = clamp(heart.scale * h * 0.58, 44, 96);
+      const breath = 1 + 0.055 * Math.sin(timeSec * 3.2 + idx);
+      const size = baseSize * breath * (0.68 + 0.32 * intensity);
+      const tilt = Math.sin(timeSec * 1.7 + idx) * 0.07;
 
-      // Primary soft luminous heart levitating above fingertips
-      drawDreamyHeart(ctx, hx, hy, size, tilt, intensity * 0.94, 0.4);
+      // Primary 3D pink halftone dot-matrix heart levitating above fingertips
+      drawDreamyHeart(ctx, hx, hy, size, tilt, intensity * 0.98, 0.25);
 
-      // Soft hazy companion heart gently orbiting above
-      const miniX = hx + Math.sin(timeSec * 1.9 + idx * 2.1) * size * 0.62;
-      const miniY = hy - size * 1.12 + Math.cos(timeSec * 2.2 + idx) * size * 0.18;
-      drawDreamyHeart(ctx, miniX, miniY, size * 0.34, -tilt * 1.3, intensity * 0.72, 0.75);
+      // Companion smaller pink halftone heart gently orbiting above
+      const miniX = hx + Math.sin(timeSec * 1.85 + idx * 2.1) * size * 0.85;
+      const miniY = hy - size * 1.18 + Math.cos(timeSec * 2.1 + idx) * size * 0.16;
+      drawDreamyHeart(ctx, miniX, miniY, size * 0.36, -tilt * 1.25, intensity * 0.84, 0.75);
 
-      // Dreamy warm bokeh motes softly circling the floating heart
-      for (let k = 0; k < 3; k++) {
-        const ang = timeSec * 1.3 + k * ((Math.PI * 2) / 3) + idx;
-        const sx = hx + Math.cos(ang) * size * 1.25;
-        const sy = hy + Math.sin(ang) * size * 0.85;
-        const sr = size * (0.28 + 0.12 * Math.sin(timeSec * 3.6 + k * 2.1));
-        drawSoftMote(
-          ctx,
-          sx,
-          sy,
-          sr,
-          k === 0 ? 'rgba(255, 242, 222, 0.65)' : 'rgba(255, 198, 226, 0.60)',
-          'rgba(255, 138, 188, 0.18)',
-          intensity * 0.82,
-        );
+      // Crisp floating pink halftone accent dots orbiting the heart
+      ctx.save();
+      ctx.globalAlpha = intensity * 0.82;
+      for (let k = 0; k < 5; k++) {
+        const ang = timeSec * 1.15 + k * ((Math.PI * 2) / 5) + idx;
+        const sx = hx + Math.cos(ang) * size * 1.32;
+        const sy = hy + Math.sin(ang) * size * 0.92;
+        const sr = clamp(size * (0.045 + 0.025 * Math.sin(timeSec * 3.4 + k * 1.9)), 2, 5.5);
+        ctx.fillStyle = k % 2 === 0 ? '#ffc4e6' : '#ff5ea8';
+        ctx.beginPath();
+        ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+        ctx.fill();
       }
+      ctx.restore();
     });
   }
 
@@ -608,16 +656,23 @@ export function createEffectsOverlay(canvas) {
       ctx.strokeStyle = 'rgba(255, 234, 246, 0.54)';
       ctx.stroke();
 
-      // Delicate feathered glass shimmer crescent + tiny secondary bottom reflection
-      ctx.fillStyle = 'rgba(255, 250, 253, 0.68)';
+      // Delicate feathered glass shimmer crescent + curved halftone dot accent along lower-right rim
+      ctx.fillStyle = 'rgba(255, 250, 253, 0.72)';
       ctx.beginPath();
       ctx.ellipse(b.x - r * 0.36, b.y - r * 0.36, r * 0.24, r * 0.095, -0.72, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.fillStyle = 'rgba(255, 220, 240, 0.40)';
-      ctx.beginPath();
-      ctx.arc(b.x + r * 0.34, b.y + r * 0.34, r * 0.09, 0, Math.PI * 2);
-      ctx.fill();
+      const dotSteps = 6;
+      for (let d = 0; d < dotSteps; d++) {
+        const ang = 0.22 + (d / (dotSteps - 1)) * 1.32;
+        const dr = Math.max(1.1, r * (0.045 + Math.sin((d / (dotSteps - 1)) * Math.PI) * 0.055));
+        const dx = b.x + Math.cos(ang) * r * 0.74;
+        const dy = b.y + Math.sin(ang) * r * 0.74;
+        ctx.fillStyle = 'rgba(255, 118, 186, 0.72)';
+        ctx.beginPath();
+        ctx.arc(dx, dy, dr, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       ctx.restore();
     }
@@ -783,10 +838,12 @@ export function createEffectsOverlay(canvas) {
 
     const labelFont = `600 ${Math.round(11 * unit)}px ui-monospace, SFMono-Regular, Menlo, monospace`;
     ctx.font = labelFont;
-    ctx.fillStyle = 'rgba(22, 21, 33, 0.8)';
-    ctx.fillRect(fx - 34 * unit, fy - bracketR - 22 * unit, 68 * unit, 17 * unit);
+    const refLabel = distanceInfo.refLabel || 'FACE REF';
+    const refW = ctx.measureText(refLabel).width + 14 * unit;
+    ctx.fillStyle = 'rgba(14, 16, 28, 0.78)';
+    ctx.fillRect(fx - refW * 0.5, fy - bracketR - 22 * unit, refW, 17 * unit);
     ctx.fillStyle = hasHand ? palette.main : '#ecfa76';
-    ctx.fillText('FACE REF', fx - 27 * unit, fy - bracketR - 10 * unit);
+    ctx.fillText(refLabel, fx - refW * 0.5 + 7 * unit, fy - bracketR - 10 * unit);
 
     if (hasHand && palmCenter) {
       const px = palmCenter[0] * w;
@@ -837,7 +894,7 @@ export function createEffectsOverlay(canvas) {
       }
 
       const mx = (fx + px) * 0.5;
-      const my = (fy + py) * 0.5 - 14 * unit;
+      const my = (fy + py) * 0.5 - 30 * unit;
       const pct = Math.round(distortion * 100);
       const pillText = `DIST ${ratio.toFixed(2)}x · 失真 ${pct}%`;
       const pillW = ctx.measureText(pillText).width + 18 * unit;
@@ -855,25 +912,113 @@ export function createEffectsOverlay(canvas) {
       ctx.fillText(pillText, rx + 9 * unit, ry + 14.5 * unit);
     }
 
-    const barW = 168 * unit;
-    const barH = 8 * unit;
-    const padX = 16 * unit;
-    const padY = h - 24 * unit;
-    const pct = Math.round(distortion * 100);
+    // Restrained retro-futurist acoustic ring pulse (clean subtle dots around the resonator/face)
+    const ringCount = 2;
+    const ringGlyphs = ['·', ':', '+'];
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const ringBase = clamp(faceWidth * h * 0.68, 56 * unit, 134 * unit);
+    for (let ring = 0; ring < ringCount; ring++) {
+      const phase = (timeSec * (0.38 + distortion * 0.75) + ring / ringCount) % 1;
+      const rad = ringBase * (0.78 + phase * (1.15 + distortion * 0.75));
+      const alpha = (1 - phase) * (0.11 + distortion * 0.24 + (audioRunning ? audioEnergy * 0.16 : 0));
+      if (alpha < 0.02) continue;
+      const glyphIdx = Math.min(ringGlyphs.length - 1, Math.floor(distortion * ringGlyphs.length));
+      const ch = ringGlyphs[glyphIdx];
+      const count = 16 + ring * 6;
+      ctx.font = `600 ${Math.round((9.5 + (1 - phase) * 2.5) * unit)}px "SF Mono", ui-monospace, Menlo, monospace`;
+      ctx.fillStyle = `rgba(${palette.r}, ${palette.g}, ${palette.b}, ${alpha.toFixed(3)})`;
+      for (let k = 0; k < count; k++) {
+        const a = (k / count) * Math.PI * 2 + timeSec * (ring % 2 ? 0.18 : -0.16);
+        const jitter = (audioRunning ? audioEnergy * 6 : 2) * distortion * Math.sin(k * 3.1 + timeSec * 8) * unit;
+        ctx.fillText(ch, fx + Math.cos(a) * (rad + jitter), fy + Math.sin(a) * (rad + jitter) * 0.88);
+      }
+    }
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
 
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = 'rgba(22, 21, 33, 0.82)';
-    ctx.fillRect(padX - 8 * unit, padY - 24 * unit, barW + 16 * unit, 38 * unit);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.14)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(padX - 8 * unit, padY - 24 * unit, barW + 16 * unit, 38 * unit);
+    // Single-line retro-futurist oscilloscope ASCII ribbon tucked softly along the lower margin
+    const specCols = Math.max(24, Math.min(48, Math.floor(w / (24 * unit))));
+    const specMarginX = w * 0.14;
+    const specSpanW = w - specMarginX * 2;
+    const specBaseY = h - 166 * unit;
+    const asciiLevels = ['·', ':', '-', '=', '+', '*'];
+    ctx.font = `600 ${Math.round(10.5 * unit)}px "SF Mono", ui-monospace, Menlo, monospace`;
+    ctx.textAlign = 'center';
+    for (let c = 0; c < specCols; c++) {
+      const u = c / Math.max(1, specCols - 1);
+      const env = Math.sin(u * Math.PI);
+      let sampleVal;
+      if (waveform && waveform.length && audioRunning) {
+        const wIdx = Math.min(waveform.length - 1, Math.floor(u * waveform.length));
+        sampleVal = Math.abs(waveform[wIdx]) * (2.4 + distortion * 2.0);
+      } else {
+        sampleVal = Math.abs(
+          Math.sin(u * 12 - timeSec * (2.0 + distortion * 4.5)) * 0.55 +
+          Math.cos(u * 25 + timeSec * (3.2 + distortion * 5.8)) * 0.35,
+        ) * (0.30 + distortion * 0.78);
+      }
+      const mag = clamp(sampleVal * env, 0, 1);
+      const gIdx = Math.min(asciiLevels.length - 1, Math.floor(mag * asciiLevels.length));
+      const colX = specMarginX + u * specSpanW;
+      const colY = specBaseY - mag * 14 * unit;
+      const alpha = (0.16 + mag * 0.42) * env;
+      ctx.fillStyle = `rgba(${palette.r}, ${palette.g}, ${palette.b}, ${alpha.toFixed(3)})`;
+      ctx.fillText(asciiLevels[gIdx], colX, colY);
+    }
+    ctx.textAlign = 'left';
 
-    ctx.fillStyle = '#bbb7c5';
-    ctx.fillText(audioRunning ? `AUDIO FX · ${pct}%` : `FX PREVIEW · ${pct}%`, padX, padY - 9 * unit);
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-    ctx.fillRect(padX, padY - 2 * unit, barW, barH);
-    ctx.fillStyle = palette.main;
-    ctx.fillRect(padX, padY - 2 * unit, barW * distortion, barH);
+    ctx.restore();
+  }
+
+  // Restrained retro-futurist perimeter ASCII markers (strictly around the outer margins — center stays pure)
+  function renderAsciiDecor(mode, { timeSec, comicCorners = null }) {
+    const w = canvas.width;
+    const h = canvas.height;
+    const unit = Math.max(0.75, Math.min(w, h) / 720);
+    const edgeX = Math.max(22 * unit, w * 0.026);
+    const padTop = Math.max(82 * unit, h * 0.11);
+    const padBottom = Math.max(112 * unit, h * 0.15);
+
+    ctx.save();
+    const accent = mode === 'audio'
+      ? 'rgba(130, 232, 255, '
+      : mode === 'magic'
+        ? 'rgba(220, 214, 255, '
+        : 'rgba(196, 224, 252, ';
+
+    // Subtle cassette-futurist edge calibration micro-glyphs pinned cleanly near outer left/right margins
+    const marginGlyphs = ['+', '·', '::', '—'];
+    ctx.font = `500 ${Math.round(9.5 * unit)}px "SF Mono", ui-monospace, Menlo, monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const spanY = Math.max(60, h - padTop - padBottom);
+    for (let i = 0; i < 6; i++) {
+      const side = i % 2 === 0 ? 0 : 1;
+      const frac = (Math.floor(i / 2) + 0.5) / 3;
+      const x = side === 0 ? edgeX + 10 * unit : w - edgeX - 10 * unit;
+      const y = padTop + frac * spanY;
+      const pulse = 0.55 + 0.45 * Math.sin(timeSec * 1.1 + i * 1.7);
+      ctx.fillStyle = `${accent}${(0.22 * pulse).toFixed(3)})`;
+      ctx.fillText(marginGlyphs[i % marginGlyphs.length], x, y);
+    }
+
+    // Comic mode: tiny minimalist '+' registration crosshairs at the 4 frame corners (no cluttered boxes)
+    if (mode === 'comic' && comicCorners && comicCorners.length === 4) {
+      ctx.strokeStyle = 'rgba(244, 248, 152, 0.46)';
+      ctx.lineWidth = 1.1 * unit;
+      const arm = 5.5 * unit;
+      for (const [nx, ny] of comicCorners) {
+        const px = nx * w;
+        const py = ny * h;
+        ctx.beginPath();
+        ctx.moveTo(px - arm, py);
+        ctx.lineTo(px + arm, py);
+        ctx.moveTo(px, py - arm);
+        ctx.lineTo(px, py + arm);
+        ctx.stroke();
+      }
+    }
 
     ctx.restore();
   }
@@ -890,6 +1035,8 @@ export function createEffectsOverlay(canvas) {
     audioEnergy = 0,
     audioRunning = false,
     showHandNodes = false,
+    asciiMode = false,
+    comicCorners = null,
   }) {
     const dt = lastTimestamp ? clamp((now - lastTimestamp) / 1000, 0.004, 0.05) : 0.016;
     lastTimestamp = now;
@@ -985,11 +1132,19 @@ export function createEffectsOverlay(canvas) {
       renderAudioLink(audioDistance, waveform, audioEnergy, audioRunning, timeSec);
     }
 
-    if (showHandNodes || mode === 'audio') {
+    if (showHandNodes) {
       const distVal = mode === 'audio' && audioDistance ? audioDistance.distortion : 0;
       const activeIdx = mode === 'audio' && audioDistance ? audioDistance.activeHandIndex : -1;
       renderHandNodes(stageHands, timeSec, distVal, activeIdx, mode === 'audio' || showHandNodes);
     }
+
+    renderAsciiDecor(mode, {
+      timeSec,
+      asciiMode,
+      comicCorners,
+      fireIntensityVal: fireIntensity,
+      heartIntensityVal: heartIntensity,
+    });
   }
 
   return {

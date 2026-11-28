@@ -17,6 +17,13 @@
   src: url("./audiowide-latin.woff2") format("woff2");
 }
 @font-face {
+  font-family: "LogoSC Unbounded Sans";
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url("./btn-unbounded.woff2") format("woff2");
+}
+@font-face {
   font-family: "SoukouHancho";
   font-style: normal;
   font-weight: 400;

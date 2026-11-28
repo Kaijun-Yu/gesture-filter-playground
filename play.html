@@ -2,91 +2,161 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#161521">
-  <title>手势滤镜游乐园 · 交互试玩</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#060811">
+  <title>漫画窗 × 魔法手势 · GESTURE // PLAYGROUND</title>
   <link rel="icon" href="data:,">
-  <link rel="stylesheet" href="./styles.css">
+  <link rel="preload" href="./assets/fonts/btn-unbounded.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./assets/fonts/fonts.css">
+  <link rel="stylesheet" href="./studio.css">
   <script type="module" src="./play.js"></script>
 </head>
-<body class="play">
-  <header class="site-header">
-    <a class="brand" href="./" aria-label="手势滤镜游乐园首页">
-      <span class="brand-mark" aria-hidden="true"></span>手势滤镜游乐园
-    </a>
-    <a class="return-link" href="./">返回首页</a>
-  </header>
-  <main class="workspace">
-    <div class="studio">
-      <div class="stage" id="stage">
-        <canvas id="view" aria-label="手势特效实时预览"></canvas>
-        <canvas id="fx-layer" aria-hidden="true"></canvas>
-        <video id="camera-feed" muted playsinline hidden></video>
-        <div class="handles" id="handles" hidden>
-          <button class="handle" type="button" aria-label="拖动左上角，也可使用方向键"></button>
-          <button class="handle" type="button" aria-label="拖动右上角，也可使用方向键"></button>
-          <button class="handle" type="button" aria-label="拖动右下角，也可使用方向键"></button>
-          <button class="handle" type="button" aria-label="拖动左下角，也可使用方向键"></button>
+<body>
+  <main class="studio-experience" id="experience" data-mode="comic">
+    <div class="studio-stage" id="stage">
+      <canvas id="view" aria-label="漫画窗与魔法手势全屏实时预览"></canvas>
+      <canvas id="fx-layer" aria-hidden="true"></canvas>
+      <video id="camera-feed" muted playsinline hidden></video>
+
+      <div class="handles" id="handles" hidden>
+        <button class="handle" type="button" aria-label="拖动左上角，也可使用方向键"></button>
+        <button class="handle" type="button" aria-label="拖动右上角，也可使用方向键"></button>
+        <button class="handle" type="button" aria-label="拖动右下角，也可使用方向键"></button>
+        <button class="handle" type="button" aria-label="拖动左下角，也可使用方向键"></button>
+      </div>
+
+      <button class="hand-drag" id="demo-hand" type="button" hidden aria-label="拖动示例手掌位置，也可用方向键移动">
+        <span class="hand-drag-dot" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <!-- Subtle Retro-Futurist Perimeter ASCII Framing -->
+    <div class="retro-frame" aria-hidden="true">
+      <span class="retro-corner tl"></span>
+      <span class="retro-corner tr"></span>
+      <span class="retro-corner bl"></span>
+      <span class="retro-corner br"></span>
+      <div class="retro-edge retro-edge-left">
+        <span class="retro-tick"></span>
+        <span class="retro-tick long"></span>
+        <span>01</span>
+        <span class="retro-tick"></span>
+        <span class="retro-tick"></span>
+        <span>::</span>
+      </div>
+      <div class="retro-edge retro-edge-right">
+        <span>::</span>
+        <span class="retro-tick"></span>
+        <span class="retro-tick"></span>
+        <span>60</span>
+        <span class="retro-tick long"></span>
+        <span class="retro-tick"></span>
+      </div>
+      <span class="retro-edge retro-edge-bl">SYS.OPTIC // READY</span>
+      <span class="retro-edge retro-edge-br" id="retro-coord">[ MODE // COMIC ]</span>
+    </div>
+
+    <header class="hud-top">
+      <div class="hud-group hud-left">
+        <a class="glass-btn glass-icon" href="./" aria-label="返回手势游乐园首页" title="返回首页">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M12.5 5L7.5 10L12.5 15" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </a>
+      </div>
+
+      <div class="hud-group hud-center">
+        <div class="mode-switcher" role="tablist" aria-label="玩法切换">
+          <button class="mode-tab" type="button" role="tab" data-mode="comic" aria-selected="true">漫画窗</button>
+          <button class="mode-tab" type="button" role="tab" data-mode="magic" aria-selected="false">魔法手势</button>
         </div>
-        <button class="hand-drag" id="demo-hand" type="button" hidden aria-label="拖动示例手掌位置，也可用方向键移动">
-          <span class="hand-drag-dot" aria-hidden="true"></span>
+      </div>
+
+      <div class="hud-group hud-right">
+        <button class="glass-btn glass-icon" id="guide-btn" type="button" aria-label="查看手势玩法说明" title="玩法说明">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M7.6 7.5C7.85 6.1 9.05 5.2 10.45 5.2C11.95 5.2 13.05 6.15 13.05 7.45C13.05 8.55 12.3 9.15 11.2 9.75C10.35 10.2 10 10.65 10 11.55V12" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/>
+            <circle cx="10" cy="14.7" r="1.05" fill="currentColor"/>
+          </svg>
         </button>
       </div>
-      <div class="stage-caption">
-        <span id="source-label">示例画面</span>
-        <span class="stage-status" id="status" role="status">正在准备预览</span>
+    </header>
+
+    <!-- Hand-drawn animated frosted-glass onboarding toast -->
+    <div class="gesture-toast-layer" aria-live="polite">
+      <div class="gesture-toast" id="gesture-toast" data-kind="comic" data-visible="false" hidden>
+        <div class="toast-art" aria-hidden="true">
+          <svg class="toast-svg toast-svg-comic" viewBox="0 0 112 104" fill="none">
+            <rect class="comic-frame-box" x="30" y="24" width="52" height="54" rx="5" stroke="#f5d896" stroke-opacity="0.72" stroke-width="1.75" stroke-dasharray="4.5 3.5"/>
+            <g class="comic-hand-l" stroke="#eef5fc" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 46 V22 C22 18.5 26.8 18.5 26.8 22 V35"/>
+              <path d="M24 22 H46 C49.5 22 49.5 26.8 46 26.8 H31"/>
+              <path d="M22 46 C22 50.5 26 53 30 51"/>
+              <circle cx="24" cy="22" r="2.2" fill="#7be8ff" stroke="none"/>
+            </g>
+            <g class="comic-hand-r" stroke="#eef5fc" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M90 56 V80 C90 83.5 85.2 83.5 85.2 80 V67"/>
+              <path d="M88 80 H66 C62.5 80 62.5 75.2 66 75.2 H81"/>
+              <path d="M90 56 C90 51.5 86 49 82 51"/>
+              <circle cx="88" cy="80" r="2.2" fill="#ff78d2" stroke="none"/>
+            </g>
+          </svg>
+
+          <svg class="toast-svg toast-svg-magic" viewBox="0 0 112 104" fill="none">
+            <g class="magic-flame-phase">
+              <path d="M56 12 C63 22 68 30 65 40 C63 46 58 49 55 49 C50 49 46 44 46 37 C46 29 52 22 56 12 Z" stroke="#ffb854" stroke-width="2" fill="rgba(255, 168, 66, 0.22)" stroke-linejoin="round"/>
+              <path d="M55.5 25 C58.5 31 60 36 58.2 41 C57 44 53.5 44 52.5 40.5 C51.8 37.5 53.8 32 55.5 25 Z" fill="#fff0bd"/>
+              <path d="M40 84 C36 78 34 70 33 64 C32 59 36 57 38.5 60 L42 66 C41 58 40.5 50 41.5 46 C42.5 42.5 47 43 47 47 L48 60 C49 52 50 46 52 44 C54.5 42 57.5 44 57.5 48 L57.5 60 C59.5 53 61.5 48 64 47 C66.5 46 69.5 48.5 68 52 L64.5 65 C67.5 59 71 56 73.5 56 C76.5 56 78.5 59 76.5 63 C73.5 69 71 76 69 81 C66.5 87 61 91 54 91 C47.5 91 42.5 88.5 40 84 Z" stroke="#eef5fc" stroke-width="2.05" stroke-linecap="round" stroke-linejoin="round"/>
+            </g>
+            <g class="magic-heart-phase">
+              <path d="M56 42 C56 42 41 32.5 41 23 C41 17.5 45.5 14 50 14 C53 14 55 15.8 56 18 C57 15.8 59 14 62 14 C66.5 14 71 17.5 71 23 C71 32.5 56 42 56 42 Z" stroke="#ff7ec4" stroke-width="2.1" fill="rgba(255, 118, 188, 0.24)" stroke-linejoin="round"/>
+              <circle cx="34" cy="24" r="2.2" fill="#ffd2ec"/>
+              <circle cx="79" cy="20" r="1.8" fill="#ffb4de"/>
+              <circle cx="75" cy="36" r="1.5" fill="#9be8ff"/>
+              <path d="M44 88 C39 83 37 74 40 66 C42.5 59.5 48 54 53 50 C56 47.5 60.5 49 60 53 C59.5 56.5 55 60 51 63" stroke="#eef5fc" stroke-width="2.1" stroke-linecap="round"/>
+              <path d="M49 59 C54 57 62 56.5 66 59 C69.5 61.2 69 66.5 64 67.8 C58.5 69.2 52 68.5 48 66.5" stroke="#eef5fc" stroke-width="2.1" stroke-linecap="round"/>
+              <path d="M67 66.5 C71 71 71 80 65.5 85.5 C60.5 90.5 50 91.5 44 88" stroke="#eef5fc" stroke-width="2.1" stroke-linecap="round"/>
+            </g>
+          </svg>
+        </div>
+        <p class="toast-caption" id="toast-caption">拖动四角试玩 · 开摄像头双手比框</p>
       </div>
     </div>
-    <aside class="controls">
-      <div class="mode-tabs" role="tablist" aria-label="玩法模式切换">
-        <button class="mode-tab" type="button" role="tab" data-mode="comic" aria-selected="true">漫画窗</button>
-        <button class="mode-tab" type="button" role="tab" data-mode="magic" aria-selected="false">魔法手势</button>
-        <button class="mode-tab" type="button" role="tab" data-mode="audio" aria-selected="false">声波畸变</button>
+
+    <!-- Bottom-Center Primary Action (clean floating glass button, no outer box) -->
+    <section class="hud-dock" aria-label="主控制栏">
+      <div class="transient-status" id="status-pill" role="status" aria-live="polite" hidden>
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="status"></span>
       </div>
 
-      <h1 id="mode-title">漫画滤镜</h1>
-      <p id="instructions">拖动示例画面的四个角，调整漫画滤镜的位置和形状。</p>
-
-      <div class="subpanel" id="panel-magic" hidden>
-        <div class="pill-group" id="magic-demo-controls">
-          <button class="pill active" type="button" data-demo-magic="fire">🔥 摊开手火苗</button>
-          <button class="pill" type="button" data-demo-magic="heart">💖 比心泡泡</button>
-        </div>
-        <div class="gesture-badges" id="magic-camera-badges" hidden>
-          <span class="badge" id="badge-fire">🔥 摊开手 · 掌心火焰 + 火苗眼</span>
-          <span class="badge" id="badge-heart">💖 食指拇指交叉比心 · 浮空爱心 + 头顶泡泡</span>
-        </div>
+      <div class="dock-subrow" id="subrow-comic">
+        <button class="sub-pill" id="reset" type="button">↺ 重置选区</button>
       </div>
 
-      <div class="subpanel" id="panel-audio" hidden>
-        <button class="button accent-outline" id="audio-toggle" type="button">开启声音体验</button>
-        <div class="pill-group audio-sources" role="group" aria-label="音源选择">
-          <button class="pill active" type="button" data-audio-source="synth">电子律动</button>
-          <button class="pill" type="button" data-audio-source="file">本地音频</button>
-          <button class="pill" type="button" data-audio-source="mic">麦克风</button>
-        </div>
-        <input id="audio-file-input" type="file" accept="audio/*" hidden>
-        <div class="meter-row">
-          <div class="meter-head">
-            <span id="audio-source-note">手离脸越远，失真越强</span>
-            <strong id="distortion-value">0%</strong>
-          </div>
-          <div class="meter-track">
-            <div class="meter-fill" id="distortion-bar"></div>
-          </div>
-        </div>
+      <div class="dock-subrow" id="subrow-magic-demo" hidden>
+        <button class="sub-pill active" type="button" data-demo-magic="fire">🔥 掌心火焰</button>
+        <button class="sub-pill" type="button" data-demo-magic="heart">💖 比心泡泡</button>
       </div>
 
-      <label class="toggle-row" for="nodes-toggle">
-        <span>实时渲染手掌节点</span>
-        <input id="nodes-toggle" type="checkbox">
-      </label>
+      <div class="dock-subrow" id="subrow-magic-live" hidden>
+        <span class="live-chip" id="badge-fire">🔥 摊开手 · 火焰</span>
+        <span class="live-chip" id="badge-heart">💖 比心 · 泡泡</span>
+      </div>
 
-      <button class="button primary" id="camera-toggle" type="button">开启摄像头</button>
-      <button class="button secondary" id="reset" type="button">重置选区</button>
-      <p class="privacy">摄像头与麦克风数据均只在本机处理。</p>
-    </aside>
+      <div class="dock-actions">
+        <button class="glass-btn btn-hero" id="camera-toggle" type="button" data-live="false">
+          <svg class="camera-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <rect x="2.2" y="5.2" width="11.1" height="9.6" rx="2.5" stroke="currentColor" stroke-width="1.55"/>
+            <path d="M13.4 8.55L17.1 6.42C17.68 6.08 18.4 6.5 18.4 7.18V12.82C18.4 13.5 17.68 13.92 17.1 13.58L13.4 11.45" stroke="currentColor" stroke-width="1.55" stroke-linejoin="round"/>
+            <circle class="camera-live-dot" cx="5.6" cy="8.5" r="1.25" fill="currentColor"/>
+          </svg>
+          <span id="camera-label">开启摄像头</span>
+        </button>
+      </div>
+    </section>
+
+    <noscript><p class="no-script">请启用 JavaScript 后再打开交互试玩页。</p></noscript>
   </main>
-  <noscript><p class="no-script">请启用 JavaScript 后再打开试玩页。</p></noscript>
 </body>
 </html>

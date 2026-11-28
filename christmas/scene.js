@@ -120,7 +120,7 @@ function addSnow(scene, random, glow) {
   };
 }
 
-export function createWinterScene(canvas) {
+export function createWinterScene(canvas, { onLightComplete } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
   renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -179,6 +179,7 @@ export function createWinterScene(canvas) {
   let angularVelocity = 0;
   let snowAmount = 0;
   let celebrated = false;
+  let litCompleteAt = Infinity;
   let previous = 0;
   let shadowFrames = 2;
 
@@ -209,10 +210,27 @@ export function createWinterScene(canvas) {
     },
     setAscii(enabled) { bloom.setAscii(enabled); },
     celebrate(time, x = .5) { celebrated = true; fireworks.spawn(time, yaw, x, camera.aspect); },
-    reset() { desiredYaw = .29; angularVelocity = 0; celebrated = false; snowAmount = 0; fireworks.reset(); },
+    reset() { desiredYaw = .29; angularVelocity = 0; celebrated = false; snowAmount = 0; litCompleteAt = Infinity; fireworks.reset(); },
     frame(time, progress) {
       const dt = Math.min(.06, Math.max(.001, time - previous));
       previous = time;
+      if (progress < .999) {
+        litCompleteAt = Infinity;
+      } else if (litCompleteAt === Infinity) {
+        litCompleteAt = time;
+        onLightComplete?.();
+      }
+      let finishPulse = 0;
+      let finishWave = 1.25;
+      if (litCompleteAt !== Infinity) {
+        const elapsed = time - litCompleteAt;
+        if (elapsed >= 0 && elapsed < 1.55) {
+          const rise = THREE.MathUtils.smoothstep(elapsed, 0, .14);
+          const decay = Math.exp(-Math.max(0, elapsed - .09) * 2.95);
+          finishPulse = rise * decay;
+          finishWave = 1.08 - (elapsed / 0.92) * 1.28;
+        }
+      }
       if (Math.abs(angularVelocity) > 0.002) {
         desiredYaw += angularVelocity * dt;
         angularVelocity *= Math.exp(-dt * 3.3);
@@ -225,7 +243,7 @@ export function createWinterScene(canvas) {
       camera.lookAt(0, 3.04, 0);
       aurora(time, yaw);
       snowAmount += (Number(celebrated) - snowAmount) * (1 - Math.exp(-dt * 1.65));
-      floor.material.uniforms.lit.value = progress;
+      floor.material.uniforms.lit.value = progress + finishPulse * .28;
       shadowCatcher.material.opacity = .60 - progress * .14;
       if (shadowFrames > 0) {
         renderer.shadowMap.needsUpdate = true;
@@ -233,11 +251,11 @@ export function createWinterScene(canvas) {
       }
       night.rotation.y = time * .008;
       mist.position.set(-Math.sin(yaw) * 2.6, 3.2, -Math.cos(yaw) * 2.6);
-      mist.material.opacity = .09 + progress * .11;
-      tree.update(time, progress, yaw);
+      mist.material.opacity = .09 + progress * .11 + finishPulse * .065;
+      tree.update(time, progress, yaw, finishPulse, finishWave);
       snow(dt, time, snowAmount);
       fireworks.update(time);
-      bloom.render(scene, camera, progress, time);
+      bloom.render(scene, camera, progress, time, finishPulse);
     },
   };
 }

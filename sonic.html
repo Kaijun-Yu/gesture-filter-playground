@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#060811">
+  <title>声波畸变 · SONIC WARP</title>
+  <link rel="icon" href="data:,">
+  <link rel="preload" href="./assets/fonts/btn-unbounded.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./assets/fonts/fonts.css">
+  <link rel="stylesheet" href="./studio.css">
+  <script type="module" src="./sonic.js"></script>
+</head>
+<body>
+  <main class="studio-experience" id="experience" data-mode="audio">
+    <div class="studio-stage" id="stage">
+      <canvas id="view" aria-label="声波畸变全屏实时交互画面"></canvas>
+      <canvas id="fx-layer" aria-hidden="true"></canvas>
+      <video id="camera-feed" muted playsinline hidden></video>
+
+      <button class="hand-drag" id="demo-hand" type="button" aria-label="拖动示例手掌远离或靠近声源核心，也可用方向键移动">
+        <span class="hand-drag-dot" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <!-- Subtle Retro-Futurist Perimeter ASCII Framing -->
+    <div class="retro-frame" aria-hidden="true">
+      <span class="retro-corner tl"></span>
+      <span class="retro-corner tr"></span>
+      <span class="retro-corner bl"></span>
+      <span class="retro-corner br"></span>
+      <div class="retro-edge retro-edge-left">
+        <span class="retro-tick"></span>
+        <span class="retro-tick long"></span>
+        <span>HZ</span>
+        <span class="retro-tick"></span>
+        <span class="retro-tick"></span>
+        <span>::</span>
+      </div>
+      <div class="retro-edge retro-edge-right">
+        <span>::</span>
+        <span class="retro-tick"></span>
+        <span class="retro-tick"></span>
+        <span>DB</span>
+        <span class="retro-tick long"></span>
+        <span class="retro-tick"></span>
+      </div>
+      <span class="retro-edge retro-edge-bl">SYS.AUDIO // DSP.ACTIVE</span>
+      <span class="retro-edge retro-edge-br">[ 48KHZ // STEREO ]</span>
+    </div>
+
+    <header class="hud-top">
+      <div class="hud-group hud-left">
+        <a class="glass-btn glass-icon" href="./" aria-label="返回手势游乐园首页" title="返回首页">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M12.5 5L7.5 10L12.5 15" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </a>
+      </div>
+
+      <div class="hud-group hud-center">
+        <div class="sonic-telemetry" aria-label="实时声波失真度">
+          <span>WARP</span>
+          <span class="sonic-ascii-bar" id="sonic-ascii-bar" data-level="low">[············]</span>
+          <strong id="distortion-value">00%</strong>
+        </div>
+      </div>
+
+      <div class="hud-group hud-right">
+        <button class="glass-btn glass-icon" id="guide-btn" type="button" aria-label="查看声波畸变玩法说明" title="玩法说明">
+          <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <path d="M7.6 7.5C7.85 6.1 9.05 5.2 10.45 5.2C11.95 5.2 13.05 6.15 13.05 7.45C13.05 8.55 12.3 9.15 11.2 9.75C10.35 10.2 10 10.65 10 11.55V12" stroke="currentColor" stroke-width="1.65" stroke-linecap="round"/>
+            <circle cx="10" cy="14.7" r="1.05" fill="currentColor"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Hand-drawn animated frosted-glass onboarding toast -->
+    <div class="gesture-toast-layer" aria-live="polite">
+      <div class="gesture-toast" id="gesture-toast" data-kind="sonic" data-visible="false" hidden>
+        <div class="toast-art" aria-hidden="true">
+          <svg class="toast-svg toast-svg-sonic" viewBox="0 0 112 104" fill="none">
+            <g stroke="#eef5fc" stroke-opacity="0.78" stroke-width="2" stroke-linecap="round">
+              <ellipse cx="26" cy="48" rx="13" ry="17"/>
+              <path d="M21 45 H23.5 M29 45 H31.5"/>
+              <path d="M23 54 Q26 57 29 54"/>
+            </g>
+            <g stroke="#7be8ff" stroke-width="2" stroke-linecap="round">
+              <path class="sonic-wave-1" d="M44 37 Q51 48 44 59"/>
+              <path class="sonic-wave-2" d="M52 31 Q62 48 52 65" stroke="#ff6cc8"/>
+            </g>
+            <g class="sonic-hand-glide" stroke="#eef5fc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M68 68 C65 63 63.5 56 63 51 C62.5 47.5 66 46 68 48.5 L70.5 53 C70 46 70 39 71 36 C72 33 75.5 33.5 75.5 37 L76 48 C77 41 78 36 80 35 C82 34 84.5 36 84 40 L83 50 C85 44 87 40 89 40 C91 40 93 42.5 91.5 46 C89.5 52 87.5 59 86 64 C84 70 79.5 74 74 74 C70.5 74 69 71 68 68 Z"/>
+              <circle cx="77" cy="56" r="2.2" fill="#7be8ff" stroke="none"/>
+            </g>
+          </svg>
+        </div>
+        <p class="toast-caption" id="toast-caption">开启声音 · 拖动光点体验声波畸变</p>
+      </div>
+    </div>
+
+    <!-- Bottom-Center Primary Actions (no outer box wrapper; hand nodes ON by default) -->
+    <section class="hud-dock" aria-label="声波畸变控制栏">
+      <div class="transient-status" id="status-pill" role="status" aria-live="polite" hidden>
+        <span class="status-dot" aria-hidden="true"></span>
+        <span id="status"></span>
+      </div>
+
+      <div class="dock-subrow" role="group" aria-label="音源选择">
+        <button class="sub-pill active" type="button" data-audio-source="synth">电子律动</button>
+        <button class="sub-pill" type="button" data-audio-source="file">本地音频</button>
+        <button class="sub-pill" type="button" data-audio-source="mic">麦克风</button>
+        <input id="audio-file-input" type="file" accept="audio/*" hidden>
+      </div>
+
+      <div class="dock-actions">
+        <button class="glass-btn btn-hero btn-sound-hero" id="audio-toggle" type="button" data-running="false">
+          <span class="soundwave-mini" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+          <span id="audio-label">开启声音</span>
+        </button>
+
+        <button class="glass-btn btn-hero" id="camera-toggle" type="button" data-live="false">
+          <svg class="camera-icon" viewBox="0 0 20 20" fill="none" aria-hidden="true">
+            <rect x="2.2" y="5.2" width="11.1" height="9.6" rx="2.5" stroke="currentColor" stroke-width="1.55"/>
+            <path d="M13.4 8.55L17.1 6.42C17.68 6.08 18.4 6.5 18.4 7.18V12.82C18.4 13.5 17.68 13.92 17.1 13.58L13.4 11.45" stroke="currentColor" stroke-width="1.55" stroke-linejoin="round"/>
+            <circle class="camera-live-dot" cx="5.6" cy="8.5" r="1.25" fill="currentColor"/>
+          </svg>
+          <span id="camera-label">开启摄像头</span>
+        </button>
+      </div>
+
+      <p class="dock-note" id="audio-source-note">手离声源越远，声波与画面畸变越强</p>
+    </section>
+
+    <noscript><p class="no-script">请启用 JavaScript 后再打开声波畸变页。</p></noscript>
+  </main>
+</body>
+</html>

@@ -557,7 +557,9 @@ async function startCamera() {
 }
 
 try {
-  scene = createWinterScene(stage);
+  scene = createWinterScene(stage, {
+    onLightComplete: () => music.playLightComplete(),
+  });
   refreshControls();
   // Silently pre-cache MediaPipe WASM + hand model during browser idle time for fast camera startup
   preloadHandTracking(800);

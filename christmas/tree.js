@@ -181,7 +181,9 @@ export function createTree(scene, random, glow, screenHeight) {
   const starGlow = { value: 1 };
   const starAngle = { value: 0 };
   const starFacing = { value: 1 };
-  const uniforms = { light, clock, screenHeight };
+  const completePulse = { value: 0 };
+  const completeWave = { value: 1.2 };
+  const uniforms = { light, clock, screenHeight, completePulse, completeWave };
   const lightRandom = seededRandom(71265);
   const curve = addSpiral(tree, lightRandom, uniforms);
   const lengths = curve.getLengths();
@@ -195,7 +197,7 @@ export function createTree(scene, random, glow, screenHeight) {
   };
   addFrostLights(tree, crystals, lightRandom, arcAtHeight, uniforms);
   addStarBeams(star, { light, starGlow });
-  addStarFlare(tree, star.position, { light, starGlow, starAngle, starFacing });
+  addStarFlare(tree, star.position, { light, starGlow, starAngle, starFacing, completePulse });
 
   const sparkMaterial = new THREE.SpriteMaterial({
     map: glow, color: '#d6eeff', transparent: true, blending: THREE.AdditiveBlending, depthWrite: false, opacity: 0,
@@ -209,10 +211,12 @@ export function createTree(scene, random, glow, screenHeight) {
   tree.add(spark, movingLight, fill);
 
   return {
-    update(time, progress, yaw) {
+    update(time, progress, yaw, finishPulse = 0, finishWave = 1.2) {
       clock.value = time;
       light.value = progress;
-      starGlow.value = 1 + .055 * Math.sin(time * TAU / 5.6);
+      completePulse.value = finishPulse;
+      completeWave.value = finishWave;
+      starGlow.value = 1 + .055 * Math.sin(time * TAU / 5.6) + finishPulse * .36;
       const gold = THREE.MathUtils.smoothstep(progress, .85, .995);
       // Let the 3D star rotate naturally in world space while its flare tracks its relative angle to camera
       const spin = time * .34;
@@ -221,13 +225,13 @@ export function createTree(scene, random, glow, screenHeight) {
       const facing = Math.abs(Math.cos(relativeAngle));
       starAngle.value = relativeAngle;
       starFacing.value = .45 + .55 * facing;
-      star.material.emissiveIntensity = gold * 3.15 * starGlow.value * (.84 + .22 * facing);
+      star.material.emissiveIntensity = gold * 3.15 * starGlow.value * (.84 + .22 * facing) * (1 + finishPulse * .28);
       spark.position.copy(curve.getPointAt(Math.min(1, progress * 1.013)));
       const travel = THREE.MathUtils.smoothstep(progress, 0, .055) * (1 - THREE.MathUtils.smoothstep(progress, .91, 1));
       spark.material.opacity = travel * .86;
       movingLight.position.copy(spark.position);
       movingLight.intensity = travel * 16.5;
-      fill.intensity = THREE.MathUtils.smoothstep(progress, .10, .54) * (8.9 + Math.sin(time * 1.68) * 1.31);
+      fill.intensity = THREE.MathUtils.smoothstep(progress, .10, .54) * (8.9 + Math.sin(time * 1.68) * 1.31) + finishPulse * 4.4;
     },
   };
 }

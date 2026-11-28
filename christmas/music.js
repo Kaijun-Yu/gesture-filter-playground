@@ -467,6 +467,15 @@ export function createChristmasMusic() {
     });
   }
 
+  function playLightComplete() {
+    if (!enabled || !ctx || ctx.state !== 'running') return;
+    const now = ctx.currentTime + 0.01;
+    // Whisper-soft crystalline chime right as the tree finishes illuminating
+    playCelesta(midiToFreq('C7'), now, 1.5, 0.34, -0.14);
+    playCelesta(midiToFreq('F7'), now + 0.075, 1.8, 0.38, 0.16);
+    playSleighShimmer(now + 0.04, 0.28);
+  }
+
   function playCelebrate() {
     if (!enabled || !ctx || ctx.state !== 'running') return;
     const now = ctx.currentTime + 0.02;
@@ -485,6 +494,7 @@ export function createChristmasMusic() {
     toggle,
     setPhase,
     playLightUp,
+    playLightComplete,
     playCelebrate,
     isPlaying: () => enabled,
   };

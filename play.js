@@ -1,20 +1,24 @@
-import { createAudioDistortionEngine } from './audio-fx.js';
-import { containingCrop, coveringCrop, createComicRenderer } from './comic-gl.js';
+import { coveringCrop, createComicRenderer } from './comic-gl.js';
 import { createEffectsOverlay } from './effects-2d.js';
 import { prepareFaceModel, prepareVisionAssets, scheduleVisionPreload } from './vision-loader.js';
 import {
   buildSyntheticHand,
   clockwise,
-  computeHandFaceDistortion,
   detectHeartGestures,
   detectOpenPalms,
   extractComicFramePoints,
   extractFaceAnchors,
   isConvex,
   mapLandmarksToStage,
-  mapPointToStage,
 } from './gestures.js';
 
+// Redirect legacy ?mode=audio links smoothly to the dedicated standalone Sonic Warp page.
+const initialModeParam = new URLSearchParams(window.location.search).get('mode');
+if (initialModeParam === 'audio') {
+  window.location.replace('./sonic.html');
+}
+
+const experience = document.querySelector('#experience');
 const stage = document.querySelector('#stage');
 const canvas = document.querySelector('#view');
 const fxCanvas = document.querySelector('#fx-layer');
@@ -22,65 +26,43 @@ const feed = document.querySelector('#camera-feed');
 const handleLayer = document.querySelector('#handles');
 const handles = [...handleLayer.children];
 const demoHandBtn = document.querySelector('#demo-hand');
+const statusPill = document.querySelector('#status-pill');
 const statusEl = document.querySelector('#status');
-const modeTitle = document.querySelector('#mode-title');
-const instructions = document.querySelector('#instructions');
-const sourceLabel = document.querySelector('#source-label');
-const cameraToggle = document.querySelector('#camera-toggle');
-const resetBtn = document.querySelector('#reset');
-const nodesToggle = document.querySelector('#nodes-toggle');
+const retroCoord = document.querySelector('#retro-coord');
+const guideBtn = document.querySelector('#guide-btn');
 
 const modeTabs = [...document.querySelectorAll('.mode-tab')];
-const panelMagic = document.querySelector('#panel-magic');
-const magicDemoControls = document.querySelector('#magic-demo-controls');
+const subrowComic = document.querySelector('#subrow-comic');
+const subrowMagicDemo = document.querySelector('#subrow-magic-demo');
+const subrowMagicLive = document.querySelector('#subrow-magic-live');
 const magicDemoButtons = [...document.querySelectorAll('[data-demo-magic]')];
-const magicCameraBadges = document.querySelector('#magic-camera-badges');
 const badgeFire = document.querySelector('#badge-fire');
 const badgeHeart = document.querySelector('#badge-heart');
 
-const panelAudio = document.querySelector('#panel-audio');
-const audioToggle = document.querySelector('#audio-toggle');
-const audioSourceButtons = [...document.querySelectorAll('[data-audio-source]')];
-const audioFileInput = document.querySelector('#audio-file-input');
-const audioSourceNote = document.querySelector('#audio-source-note');
-const distortionValue = document.querySelector('#distortion-value');
-const distortionBar = document.querySelector('#distortion-bar');
+const cameraToggle = document.querySelector('#camera-toggle');
+const cameraLabel = document.querySelector('#camera-label');
+const resetBtn = document.querySelector('#reset');
 
-const initialCorners = [[0.23, 0.27], [0.69, 0.19], [0.76, 0.68], [0.29, 0.79]];
-const initialDemoHand = [0.77, 0.56];
+const gestureToast = document.querySelector('#gesture-toast');
+const toastCaption = document.querySelector('#toast-caption');
 
-const modeCopy = {
-  comic: {
-    title: '漫画滤镜',
-    demo: '拖动示例画面的四个角，调整漫画滤镜的位置和形状。',
-    camera: '双手的拇指和食指伸出 L 形或比出取景框，双手围住的区域会实时变成带漫画描边的画面。',
-  },
-  magic: {
-    title: '魔法手势',
-    demo: '切换下方手势预览，拖动光点移动手部位置；开启摄像头可实时触发掌心大火焰与比心泡泡。',
-    camera: '摊开手时掌心中心燃起火焰、双眼变成火苗眼；食指与拇指交叉比心时，指尖上方浮起柔光爱心，头顶持续飘起梦幻爱心泡泡。',
-  },
-  audio: {
-    title: '声波畸变',
-    demo: '开启声音并拖动模拟手掌远离或靠近脸部：离脸越远声音失真越强，手掌 21 个节点实时渲染。',
-    camera: '开启声音并将手掌放进画面：手离脸越远，声音失真与画面畸变越强，手掌节点与声波连线实时追踪。',
-  },
-};
+// Framed right over the sculptural retro-futurist centerpiece in assets/bg-comic.jpg
+const initialCorners = [[0.23, 0.27], [0.74, 0.24], [0.76, 0.72], [0.25, 0.75]];
+const initialDemoHand = [0.50, 0.62];
 
-const sample = new Image();
+// Dedicated minimalist retro-futurist studio backdrops for each mode (no awkward close-up faces)
+const comicBackdrop = new Image();
+const magicBackdrop = new Image();
+
 let demoCorners = [...initialCorners];
 let demoHandPos = [...initialDemoHand];
 let demoMagicGesture = 'fire'; // 'fire' | 'heart'
 
-const initialModeParam = new URLSearchParams(window.location.search).get('mode');
-let activeMode = initialModeParam && Object.hasOwn(modeCopy, initialModeParam) ? initialModeParam : 'comic'; // 'comic' | 'magic' | 'audio'
-let sourceMode = 'demo';  // 'demo' | 'loading' | 'camera'
-let showHandNodes = false;
+let activeMode = initialModeParam === 'magic' ? 'magic' : 'comic'; // 'comic' | 'magic'
+let sourceMode = 'demo'; // 'demo' | 'loading' | 'camera'
 
 let renderWebGL;
 let fxOverlay;
-const audio = createAudioDistortionEngine();
-
 let stream;
 let requestId = 0;
 let handTrackerPromise;
@@ -90,18 +72,68 @@ const handProgressListeners = new Set();
 let lastHandProgress = null;
 let animationId = 0;
 let demoAnimationId = 0;
-let smoothedDistortion = 0;
+
+const shownModeToast = { comic: false, magic: false };
+let toastAutoHideTimer = null;
+let toastHideFinishTimer = null;
 
 function showStatus(message, state = '') {
-  if (statusEl.textContent !== message) statusEl.textContent = message;
-  statusEl.dataset.state = state;
+  const visible = Boolean(message) && (state === 'loading' || state === 'error');
+  statusPill.hidden = !visible;
+  if (visible && statusEl.textContent !== message) statusEl.textContent = message;
+  statusPill.dataset.state = state;
+}
+
+function clearToastTimers() {
+  if (toastAutoHideTimer) { clearTimeout(toastAutoHideTimer); toastAutoHideTimer = null; }
+  if (toastHideFinishTimer) { clearTimeout(toastHideFinishTimer); toastHideFinishTimer = null; }
+}
+
+function hideToast(immediate = false) {
+  clearToastTimers();
+  gestureToast.dataset.visible = 'false';
+  if (immediate) {
+    gestureToast.hidden = true;
+    return;
+  }
+  toastHideFinishTimer = setTimeout(() => {
+    toastHideFinishTimer = null;
+    if (gestureToast.dataset.visible !== 'true') gestureToast.hidden = true;
+  }, 380);
+}
+
+function showOnboardingToast(kind, { durationMs = 5200, force = false } = {}) {
+  if (!force && shownModeToast[kind]) return;
+  shownModeToast[kind] = true;
+  clearToastTimers();
+
+  gestureToast.dataset.kind = kind;
+  if (kind === 'comic') {
+    toastCaption.textContent = sourceMode === 'camera'
+      ? '双手拇指与食指比出 L 形取景框'
+      : '拖动四角试玩 · 开摄像头双手比框';
+  } else {
+    toastCaption.textContent = sourceMode === 'camera'
+      ? '摊开手燃火焰 · 交叉比心飘泡泡'
+      : '拖动光点试玩 · 开摄像头触发魔法';
+  }
+
+  gestureToast.hidden = false;
+  requestAnimationFrame(() => {
+    if (!gestureToast.hidden) gestureToast.dataset.visible = 'true';
+  });
+  toastAutoHideTimer = setTimeout(() => {
+    toastAutoHideTimer = null;
+    hideToast();
+  }, durationMs);
 }
 
 function syncSize() {
   const width = canvas.clientWidth;
   const height = canvas.clientHeight;
   if (!width || !height) return;
-  const scale = Math.min(window.devicePixelRatio || 1, 1280 / width, 960 / height);
+  const dpr = Math.min(window.devicePixelRatio || 1, 1.75);
+  const scale = Math.min(dpr, 1440 / width, 1080 / height);
   const outputWidth = Math.max(1, Math.round(width * scale));
   const outputHeight = Math.max(1, Math.round(height * scale));
   if (canvas.width !== outputWidth) canvas.width = outputWidth;
@@ -110,101 +142,26 @@ function syncSize() {
   if (fxCanvas.height !== outputHeight) fxCanvas.height = outputHeight;
 }
 
-// Pre-calibrated face & eye anchors for assets/sample-original.jpg (1200x900) so demo mode is instant.
-function getDemoFaceAnchors(crop, aspect) {
-  const map = (x, y) => mapPointToStage({ x, y }, crop, false);
-  const leftOuter = map(0.420, 0.304);
-  const leftInner = map(0.483, 0.308);
-  const rightInner = map(0.528, 0.304);
-  const rightOuter = map(0.589, 0.292);
-  const leftCenter = map(0.453, 0.304);
-  const rightCenter = map(0.558, 0.296);
-  const faceLeft = map(0.400, 0.355);
-  const faceRight = map(0.614, 0.345);
-  const forehead = map(0.498, 0.168);
-  const chin = map(0.510, 0.512);
-  const center = map(0.506, 0.345);
-  const headTop = map(0.498, 0.155);
-
-  const eyeWidthL = Math.hypot((leftInner[0] - leftOuter[0]) * aspect, leftInner[1] - leftOuter[1]);
-  const eyeWidthR = Math.hypot((rightOuter[0] - rightInner[0]) * aspect, rightOuter[1] - rightInner[1]);
-  const faceWidth = Math.hypot((faceRight[0] - faceLeft[0]) * aspect, faceRight[1] - faceLeft[1]);
-  const faceHeight = Math.hypot((forehead[0] - chin[0]) * aspect, forehead[1] - chin[1]);
-
-  return {
-    leftEye: { center: leftCenter, width: eyeWidthL, height: eyeWidthL * 0.42, angle: 0.04 },
-    rightEye: { center: rightCenter, width: eyeWidthR, height: eyeWidthR * 0.42, angle: -0.06 },
-    center,
-    forehead,
-    chin,
-    headTop,
-    width: faceWidth,
-    height: faceHeight,
-  };
-}
-
-function updateDistortionMeter(amount) {
-  const pct = Math.round(Math.max(0, Math.min(1, amount)) * 100);
-  distortionValue.textContent = `${pct}%`;
-  distortionBar.style.width = `${pct}%`;
-}
-
-function updateAudioUI() {
-  const running = audio.isRunning();
-  audioToggle.textContent = running ? '暂停声音' : '开启声音体验';
-  audioToggle.classList.toggle('is-active', running);
-
-  const src = audio.getSourceType();
-  audioSourceButtons.forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.audioSource === src);
-  });
-
-  if (src === 'mic') {
-    audioSourceNote.textContent = running ? '麦克风实时失真中（建议戴耳机）' : '实时麦克风变声（建议戴耳机防啸叫）';
-  } else if (src === 'file') {
-    const name = audio.getFileName();
-    audioSourceNote.textContent = name ? `正在播放：${name}` : '点击「本地音频」选择音乐文件';
-  } else {
-    audioSourceNote.textContent = '手离脸越远，声音失真越强';
-  }
-}
-
 function syncUIForMode() {
-  const copy = modeCopy[activeMode];
-  modeTitle.textContent = copy.title;
-  instructions.textContent = sourceMode === 'demo' ? copy.demo : copy.camera;
+  experience.dataset.mode = activeMode;
+  if (retroCoord) {
+    retroCoord.textContent = activeMode === 'comic' ? '[ MODE // COMIC ]' : '[ MODE // MAGIC ]';
+  }
 
   modeTabs.forEach(tab => {
     tab.setAttribute('aria-selected', String(tab.dataset.mode === activeMode));
   });
 
-  panelMagic.hidden = activeMode !== 'magic';
-  panelAudio.hidden = activeMode !== 'audio';
+  subrowComic.hidden = !(sourceMode === 'demo' && activeMode === 'comic');
+  subrowMagicDemo.hidden = !(sourceMode === 'demo' && activeMode === 'magic');
+  subrowMagicLive.hidden = !(sourceMode === 'camera' && activeMode === 'magic');
 
-  magicDemoControls.hidden = sourceMode !== 'demo';
-  magicCameraBadges.hidden = sourceMode === 'demo';
   magicDemoButtons.forEach(btn => {
     btn.classList.toggle('active', btn.dataset.demoMagic === demoMagicGesture);
   });
 
-  // In audio mode, real-time hand nodes are always enabled by default.
-  if (activeMode === 'audio') {
-    showHandNodes = true;
-    nodesToggle.checked = true;
-  }
-
   handleLayer.hidden = !(sourceMode === 'demo' && activeMode === 'comic');
-  demoHandBtn.hidden = !(sourceMode === 'demo' && (activeMode === 'magic' || activeMode === 'audio'));
-  resetBtn.hidden = !(sourceMode === 'demo' && activeMode === 'comic');
-
-  if (activeMode !== 'audio' && audio.isRunning()) {
-    audio.stop();
-    updateAudioUI();
-  }
-  if (activeMode !== 'audio') {
-    smoothedDistortion = 0;
-    updateDistortionMeter(0);
-  }
+  demoHandBtn.hidden = !(sourceMode === 'demo' && activeMode === 'magic');
 }
 
 function syncDemoHandlePositions() {
@@ -216,65 +173,60 @@ function syncDemoHandlePositions() {
   demoHandBtn.style.top = `${demoHandPos[1] * 100}%`;
 }
 
+function getDemoBackdrop() {
+  return activeMode === 'magic' ? magicBackdrop : comicBackdrop;
+}
+
 function renderDemoStep(now = performance.now()) {
-  if (!renderWebGL || !fxOverlay || !sample.complete || !sample.naturalWidth || sourceMode !== 'demo') return;
+  const bg = getDemoBackdrop();
+  if (!renderWebGL || !fxOverlay || !bg.complete || !bg.naturalWidth || sourceMode !== 'demo') return;
   syncSize();
   syncDemoHandlePositions();
 
-  const crop = coveringCrop(canvas.width, canvas.height, sample.naturalWidth, sample.naturalHeight);
+  const crop = coveringCrop(canvas.width, canvas.height, bg.naturalWidth, bg.naturalHeight);
   const aspect = canvas.width / Math.max(1, canvas.height);
-  const faceAnchors = getDemoFaceAnchors(crop, aspect);
-
-  // Synthetic 21-point hand for demo mode in magic & audio modes (or when hand nodes toggled on).
-  const syntheticHand = buildSyntheticHand(demoHandPos, 0.165, aspect);
-  const stageHands = activeMode === 'comic'
-    ? (showHandNodes ? [buildSyntheticHand([0.24, 0.44], 0.145, aspect), buildSyntheticHand([0.76, 0.44], 0.145, aspect)] : [])
-    : [syntheticHand];
 
   let openPalms = [];
   let heartGestures = [];
-  let audioDistance = null;
-  let glitch = 0;
+  let demoFaceAnchors = null;
 
   if (activeMode === 'magic') {
+    const syntheticHand = buildSyntheticHand(demoHandPos, 0.175, aspect);
     if (demoMagicGesture === 'fire') {
+      // Showcase pure roaring volumetric palm fire cleanly in the dark minimalist alcove (no disembodied eyes)
       openPalms = detectOpenPalms([syntheticHand], aspect);
-      showStatus('预览：掌心火焰 + 火苗眼', 'tracking');
+      showStatus('示例 · 掌心火焰', 'tracking');
     } else {
       heartGestures = [{
         type: 'finger-heart',
-        anchor: [demoHandPos[0], demoHandPos[1] - 0.11],
-        scale: 0.145,
+        anchor: [demoHandPos[0], demoHandPos[1] - 0.08],
+        scale: 0.155,
       }];
-      showStatus('预览：比心浮空爱心 + 头顶爱心泡泡', 'tracking');
+      // Let dreamy translucent bubbles rise organically above the floating heart
+      demoFaceAnchors = {
+        headTop: [demoHandPos[0], Math.max(0.22, demoHandPos[1] - 0.16)],
+        width: 0.24,
+        height: 0.34,
+      };
+      showStatus('示例 · 比心泡泡', 'tracking');
     }
-  } else if (activeMode === 'audio') {
-    audioDistance = computeHandFaceDistortion([syntheticHand], faceAnchors, aspect);
-    smoothedDistortion += (audioDistance.distortion - smoothedDistortion) * 0.25;
-    audioDistance = { ...audioDistance, distortion: smoothedDistortion };
-    audio.setDistortion(smoothedDistortion);
-    updateDistortionMeter(smoothedDistortion);
-    glitch = smoothedDistortion * (audio.isRunning() ? (0.45 + audio.getEnergy() * 0.9) : 0.45);
-    showStatus(`模拟手掌距脸 ${audioDistance.ratio.toFixed(2)}x · 失真 ${Math.round(smoothedDistortion * 100)}%`, 'tracking');
-  } else if (statusEl.dataset.state === 'tracking') {
-    showStatus('');
+  } else {
+    showStatus('示例 · 拖动四角', '');
   }
 
   const comicOpacity = activeMode === 'comic' ? 1 : 0;
-  renderWebGL(sample, crop, demoCorners, comicOpacity, false, glitch, now * 0.001);
+  renderWebGL(bg, crop, demoCorners, comicOpacity, false, 0, now * 0.001, 0);
 
   fxOverlay.renderFrame({
     now,
     mode: activeMode,
-    stageHands,
-    faceAnchors,
+    stageHands: [],
+    faceAnchors: demoFaceAnchors,
     openPalms,
     heartGestures,
-    audioDistance,
-    waveform: audio.getWaveform(),
-    audioEnergy: audio.getEnergy(),
-    audioRunning: audio.isRunning(),
-    showHandNodes,
+    showHandNodes: false,
+    asciiMode: false,
+    comicCorners: activeMode === 'comic' ? demoCorners : null,
   });
 }
 
@@ -282,12 +234,6 @@ function updateDemoLoop() {
   cancelAnimationFrame(demoAnimationId);
   demoAnimationId = 0;
   if (sourceMode !== 'demo') return;
-
-  const needsAnimation = activeMode === 'magic' || activeMode === 'audio' || showHandNodes;
-  if (!needsAnimation) {
-    renderDemoStep(performance.now());
-    return;
-  }
 
   const tick = now => {
     if (sourceMode !== 'demo') return;
@@ -298,18 +244,17 @@ function updateDemoLoop() {
 }
 
 function moveCorner(index, x, y) {
-  const clampVal = value => Math.min(0.965, Math.max(0.035, value));
+  const clampVal = value => Math.min(0.95, Math.max(0.05, value));
   const moved = [...demoCorners];
   moved[index] = [clampVal(x), clampVal(y)];
   if (!isConvex(moved)) return;
   demoCorners = moved;
-  if (!demoAnimationId) renderDemoStep();
 }
 
 function moveDemoHand(x, y) {
   demoHandPos = [
-    Math.min(0.94, Math.max(0.06, x)),
-    Math.min(0.90, Math.max(0.12, y)),
+    Math.min(0.90, Math.max(0.10, x)),
+    Math.min(0.84, Math.max(0.20, y)),
   ];
   syncDemoHandlePositions();
 }
@@ -321,14 +266,17 @@ function initHandles() {
     let drag;
     handle.addEventListener('pointerdown', event => {
       if (!event.isPrimary || event.button !== 0 || drag) return;
+      hideToast();
       drag = { id: event.pointerId, x: event.clientX, y: event.clientY, corner: demoCorners[index] };
       handle.setPointerCapture(event.pointerId);
     });
     handle.addEventListener('pointermove', event => {
       if (drag?.id !== event.pointerId) return;
-      moveCorner(index,
+      moveCorner(
+        index,
         drag.corner[0] + (event.clientX - drag.x) / canvas.clientWidth,
-        drag.corner[1] + (event.clientY - drag.y) / canvas.clientHeight);
+        drag.corner[1] + (event.clientY - drag.y) / canvas.clientHeight,
+      );
     });
     handle.addEventListener('lostpointercapture', event => {
       if (drag?.id === event.pointerId) drag = undefined;
@@ -342,10 +290,10 @@ function initHandles() {
     });
   });
 
-  // Draggable synthetic hand for demo mode (magic + audio distortion).
   let handDrag;
   demoHandBtn.addEventListener('pointerdown', event => {
     if (!event.isPrimary || event.button !== 0 || handDrag) return;
+    hideToast();
     handDrag = { id: event.pointerId, x: event.clientX, y: event.clientY, start: [...demoHandPos] };
     demoHandBtn.setPointerCapture(event.pointerId);
   });
@@ -453,7 +401,7 @@ function ensureFaceTracker() {
   return faceTrackerPromise;
 }
 
-function stopCamera(message = '') {
+function stopCamera(message = '', state = '') {
   requestId++;
   sourceMode = 'demo';
   cancelAnimationFrame(animationId);
@@ -462,11 +410,11 @@ function stopCamera(message = '') {
   stream = undefined;
   feed.pause();
   feed.srcObject = null;
-  cameraToggle.textContent = '开启摄像头';
-  sourceLabel.textContent = '示例画面';
+  cameraToggle.dataset.live = 'false';
+  cameraLabel.textContent = '开启摄像头';
   fxOverlay?.reset();
   syncUIForMode();
-  showStatus(message);
+  showStatus(message, state);
   updateDemoLoop();
 }
 
@@ -488,11 +436,8 @@ function startFrames({ assets, handLandmarker: initialHandLandmarker }) {
   let heartStreak = 0;
   let lastFireDetected = -Infinity;
   let lastHeartDetected = -Infinity;
-  let lastAudioDistance = null;
 
-  if (activeMode === 'magic' || activeMode === 'audio') {
-    ensureFaceTracker();
-  }
+  if (activeMode === 'magic') ensureFaceTracker();
 
   function frame(now) {
     if (sourceMode !== 'camera') return;
@@ -500,7 +445,7 @@ function startFrames({ assets, handLandmarker: initialHandLandmarker }) {
     if (feed.readyState < 2 || !feed.videoWidth) return;
 
     syncSize();
-    const crop = containingCrop(canvas.width, canvas.height, feed.videoWidth, feed.videoHeight);
+    const crop = coveringCrop(canvas.width, canvas.height, feed.videoWidth, feed.videoHeight);
     const aspect = canvas.width / Math.max(1, canvas.height);
 
     if (feed.currentTime !== lastTime && now - lastInference >= 36 && !handFallbackPending) {
@@ -527,17 +472,16 @@ function startFrames({ assets, handLandmarker: initialHandLandmarker }) {
           }).catch(fallbackError => {
             console.error(fallbackError);
             handFallbackPending = false;
-            stopCamera('手势追踪中断，可以重新开启摄像头');
+            stopCamera('手势追踪中断，可重新开启摄像头');
           });
           return;
         }
         console.error(error);
-        stopCamera('手势追踪中断，可以重新开启摄像头');
+        stopCamera('手势追踪中断，可重新开启摄像头');
         return;
       }
 
-      // Run face tracker asynchronously when loaded for magic/audio modes without blocking hand tracking.
-      if ((activeMode === 'magic' || activeMode === 'audio') && faceLandmarkerInstance && !faceFallbackPending) {
+      if (activeMode === 'magic' && faceLandmarkerInstance && !faceFallbackPending) {
         try {
           rawFaces = faceLandmarkerInstance.detectForVideo(feed, now).faceLandmarks || [];
         } catch (faceError) {
@@ -571,7 +515,7 @@ function startFrames({ assets, handLandmarker: initialHandLandmarker }) {
       }
 
       if (activeMode === 'comic') {
-        let message = rawHands.length === 1 ? '识别到一只手，请伸出另一只手' : '把双手放进画面';
+        let message = rawHands.length === 1 ? '识别到一只手，请伸出另一只手' : '请将双手放入画面比框';
         if (rawHands.length === 2) {
           const raw = extractComicFramePoints(rawHands);
           comicPoints = comicPoints && now - lastValidComic < 190
@@ -584,7 +528,8 @@ function startFrames({ assets, handLandmarker: initialHandLandmarker }) {
           if (isConvex(corners)) {
             trackedCorners = corners;
             lastValidComic = now;
-            message = '双手控制中';
+            message = '双手漫画框追踪中';
+            if (!gestureToast.hidden) hideToast();
           } else {
             message = '把拇指和食指拉开一点';
           }
@@ -618,44 +563,22 @@ function startFrames({ assets, handLandmarker: initialHandLandmarker }) {
         const heartOn = lastHeartGestures.length > 0;
         badgeFire.classList.toggle('active', fireOn);
         badgeHeart.classList.toggle('active', heartOn);
+        if ((fireOn || heartOn) && !gestureToast.hidden) hideToast();
 
-        if (heartOn && fireOn) showStatus('双魔法触发：掌心火焰 + 比心泡泡', 'tracking');
-        else if (heartOn) showStatus('比心触发：指尖浮空爱心 + 头顶泡泡', 'tracking');
-        else if (fireOn) showStatus('摊开手触发：掌心火焰 + 火苗眼', 'tracking');
-        else if (rawHands.length > 0) showStatus('摊开手掌燃起火焰，或食指与拇指交叉比心');
-        else showStatus('把脸和手放进画面，摊开手或比心试试');
-      } else if (activeMode === 'audio') {
-        lastAudioDistance = computeHandFaceDistortion(lastStageHands, lastFaceAnchors, aspect);
-        if (lastAudioDistance.hasHand) {
-          showStatus(
-            `手掌距脸 ${lastAudioDistance.ratio.toFixed(2)}x · 失真 ${Math.round(smoothedDistortion * 100)}%`,
-            'tracking',
-          );
-        } else {
-          showStatus('把手掌举到画面中，远离脸部增强声音失真');
-        }
+        if (heartOn && fireOn) showStatus('掌心火焰 + 比心泡泡', 'tracking');
+        else if (heartOn) showStatus('比心触发 · 爱心泡泡', 'tracking');
+        else if (fireOn) showStatus('摊开手触发 · 掌心火焰', 'tracking');
+        else if (rawHands.length > 0) showStatus('摊开手掌或比心试试', '');
+        else showStatus('请把脸和手放进画面', '');
       }
     }
 
-    // Smooth opacity & audio distortion every 60fps animation frame.
     const comicTarget = activeMode === 'comic' && now - lastValidComic < 140 ? 1 : 0;
     comicOpacity += (comicTarget - comicOpacity) * 0.28;
 
-    let glitch = 0;
-    let renderAudioDist = null;
-    if (activeMode === 'audio') {
-      const targetDist = lastAudioDistance?.hasHand ? lastAudioDistance.distortion : 0;
-      smoothedDistortion += (targetDist - smoothedDistortion) * 0.22;
-      audio.setDistortion(smoothedDistortion);
-      updateDistortionMeter(smoothedDistortion);
-      if (lastAudioDistance) {
-        renderAudioDist = { ...lastAudioDistance, distortion: smoothedDistortion };
-      }
-      glitch = smoothedDistortion * (audio.isRunning() ? (0.45 + audio.getEnergy() * 0.95) : 0.45);
-    }
+    renderWebGL(feed, crop, trackedCorners, comicOpacity > 0.01 ? comicOpacity : 0, true, 0, now * 0.001, 0);
 
-    renderWebGL(feed, crop, trackedCorners, comicOpacity > 0.01 ? comicOpacity : 0, true, glitch, now * 0.001);
-
+    // Comic & Magic pages default to NO hand skeleton nodes
     fxOverlay.renderFrame({
       now,
       mode: activeMode,
@@ -663,11 +586,9 @@ function startFrames({ assets, handLandmarker: initialHandLandmarker }) {
       faceAnchors: lastFaceAnchors,
       openPalms: activeMode === 'magic' ? lastOpenPalms : [],
       heartGestures: activeMode === 'magic' ? lastHeartGestures : [],
-      audioDistance: renderAudioDist,
-      waveform: audio.getWaveform(),
-      audioEnergy: audio.getEnergy(),
-      audioRunning: audio.isRunning(),
-      showHandNodes,
+      showHandNodes: false,
+      asciiMode: false,
+      comicCorners: activeMode === 'comic' && comicOpacity > 0.15 ? trackedCorners : null,
     });
   }
 
@@ -685,13 +606,13 @@ async function startCamera() {
   demoAnimationId = 0;
   fxOverlay?.reset();
   syncUIForMode();
-  cameraToggle.textContent = '取消开启';
-  showStatus('正在等待摄像头权限');
+  cameraLabel.textContent = '取消开启';
+  showStatus('正在请求摄像头权限…', 'loading');
   let cameraOpened = false;
 
   try {
     const requestedStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'user' }, width: { ideal: 640 }, height: { ideal: 480 } },
+      video: { facingMode: { ideal: 'user' }, width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: false,
     });
     if (current !== requestId) {
@@ -706,101 +627,68 @@ async function startCamera() {
     await feed.play();
     if (current !== requestId) return;
     cameraOpened = true;
-    sourceLabel.textContent = '摄像头';
-    showStatus('正在准备手势识别模型…');
+    showStatus('准备手势识别模型…', 'loading');
     syncSize();
-    renderWebGL(feed, containingCrop(canvas.width, canvas.height, feed.videoWidth, feed.videoHeight), initialCorners, 0, true);
+    const previewCrop = coveringCrop(canvas.width, canvas.height, feed.videoWidth, feed.videoHeight);
+    renderWebGL(feed, previewCrop, initialCorners, 0, true, 0, performance.now() * 0.001, 0);
 
     const trackerBundle = await prepareHandTracker(({ percent, stage }) => {
       if (current !== requestId || sourceMode !== 'loading') return;
-      showStatus(stage === 'init' || percent >= 100
-        ? '正在初始化手势引擎…'
-        : `正在加载手势模型 ${percent}%`);
+      showStatus(
+        stage === 'init' || percent >= 100
+          ? '正在初始化手势引擎…'
+          : `加载手势模型 ${percent}%`,
+        'loading',
+      );
     });
     if (current !== requestId) return;
     sourceMode = 'camera';
-    cameraToggle.textContent = '关闭摄像头';
+    cameraToggle.dataset.live = 'true';
+    cameraLabel.textContent = '关闭摄像头';
     syncUIForMode();
-    showStatus(activeMode === 'comic' ? '把双手放进画面' : '手势识别已就绪，开始比划吧');
+    showStatus(activeMode === 'comic' ? '双手比出取景框' : '摊开手或比心试试', '');
+    showOnboardingToast(activeMode, { force: true, durationMs: 4600 });
     startFrames(trackerBundle);
   } catch (error) {
     if (current !== requestId) return;
     console.error(error);
     const messages = {
-      NotAllowedError: '摄像头权限已拒绝，可在浏览器中更改权限',
-      NotFoundError: '没有找到摄像头，可以先在示例画面中体验',
-      NotReadableError: '摄像头无法读取，请检查是否被其他应用占用',
+      NotAllowedError: '摄像头权限未开启',
+      NotFoundError: '未检测到摄像头',
+      NotReadableError: '摄像头被其他应用占用',
     };
-    stopCamera(cameraOpened ? '视觉模型加载失败，可以重新开启摄像头' : (messages[error.name] ?? '摄像头开启失败，可以先试用示例画面'));
+    stopCamera(cameraOpened ? '手势模型加载失败，可重试' : (messages[error.name] ?? '摄像头开启失败'), 'error');
   }
 }
 
 function setMode(nextMode) {
-  if (activeMode === nextMode) return;
+  if (activeMode === nextMode || (nextMode !== 'comic' && nextMode !== 'magic')) return;
   activeMode = nextMode;
   fxOverlay?.reset();
   syncUIForMode();
-  if (sourceMode === 'camera' && (nextMode === 'magic' || nextMode === 'audio')) {
+  if (sourceMode === 'camera' && nextMode === 'magic') {
     ensureFaceTracker();
   }
-  if (sourceMode === 'demo') {
-    updateDemoLoop();
-  }
-}
-
-async function handleAudioToggle() {
-  try {
-    if (audio.isRunning()) {
-      audio.stop();
-      updateAudioUI();
-      return;
-    }
-    const src = audio.getSourceType();
-    if (src === 'file' && !audio.getFileName()) {
-      audioFileInput.click();
-      return;
-    }
-    await audio.start(src);
-    updateAudioUI();
-  } catch (error) {
-    console.error(error);
-    showStatus(error.message || '音频启动失败');
-    updateAudioUI();
-  }
-}
-
-async function handleAudioSourceSelect(src) {
-  if (src === 'file') {
-    audioFileInput.click();
-    return;
-  }
-  try {
-    await audio.start(src);
-    updateAudioUI();
-  } catch (error) {
-    console.error(error);
-    showStatus(error.message || '切换音源失败');
-    updateAudioUI();
-  }
+  const url = new URL(window.location.href);
+  url.searchParams.set('mode', activeMode);
+  window.history.replaceState(null, '', url);
+  showOnboardingToast(activeMode, { durationMs: 4800 });
 }
 
 try {
   renderWebGL = createComicRenderer(canvas);
   fxOverlay = createEffectsOverlay(fxCanvas);
 
-  sample.addEventListener('load', () => {
-    if (sourceMode !== 'demo') return;
-    showStatus('');
-    updateDemoLoop();
-  });
-  sample.addEventListener('error', () => {
-    if (sourceMode === 'demo') showStatus('示例画面加载失败，可以切换到摄像头');
-  });
-  sample.src = './assets/sample-original.jpg';
+  const onBackdropReady = () => {
+    if (sourceMode === 'demo' && !demoAnimationId) updateDemoLoop();
+  };
+  comicBackdrop.addEventListener('load', onBackdropReady);
+  magicBackdrop.addEventListener('load', onBackdropReady);
+  comicBackdrop.src = './assets/bg-comic.jpg';
+  magicBackdrop.src = './assets/bg-magic.jpg';
 
   initHandles();
   syncUIForMode();
-  updateAudioUI();
 
   new ResizeObserver(() => {
     if (sourceMode === 'demo') renderDemoStep();
@@ -815,64 +703,38 @@ try {
       demoMagicGesture = btn.dataset.demoMagic;
       fxOverlay.reset();
       syncUIForMode();
-      updateDemoLoop();
     });
   });
 
-  nodesToggle.addEventListener('change', () => {
-    showHandNodes = nodesToggle.checked;
-    if (sourceMode === 'demo') updateDemoLoop();
-  });
-
-  audioToggle.addEventListener('click', handleAudioToggle);
-  audioSourceButtons.forEach(btn => {
-    btn.addEventListener('click', () => handleAudioSourceSelect(btn.dataset.audioSource));
-  });
-  audioFileInput.addEventListener('change', async () => {
-    const file = audioFileInput.files?.[0];
-    if (!file) return;
-    try {
-      await audio.loadFile(file);
-      updateAudioUI();
-    } catch (error) {
-      console.error(error);
-      showStatus('音频文件解析失败，请换一个 MP3/WAV 文件');
-      updateAudioUI();
-    } finally {
-      audioFileInput.value = '';
-    }
+  guideBtn.addEventListener('click', () => {
+    if (gestureToast.dataset.visible === 'true') hideToast();
+    else showOnboardingToast(activeMode, { force: true, durationMs: 5600 });
   });
 
   resetBtn.addEventListener('click', () => {
     demoCorners = [...initialCorners];
-    renderDemoStep();
   });
 
   cameraToggle.addEventListener('click', () => {
     if (sourceMode === 'demo') startCamera();
-    else stopCamera();
+    else stopCamera('示例画面');
   });
 
-  // Silently warm WASM + hand model cache during idle time (and face model afterwards if needed)
-  scheduleVisionPreload({ includeHand: true, includeFace: activeMode !== 'comic', delayMs: 800 });
+  setTimeout(() => showOnboardingToast(activeMode, { durationMs: 5000 }), 450);
+
+  scheduleVisionPreload({ includeHand: true, includeFace: activeMode === 'magic', delayMs: 800 });
 
   window.addEventListener('pagehide', () => {
-    audio.stop();
     if (sourceMode !== 'demo') stopCamera();
   });
 
   canvas.addEventListener('webglcontextlost', () => {
     renderWebGL = undefined;
-    audio.stop();
     stopCamera('图形预览已中断，请刷新页面');
     cameraToggle.disabled = true;
-    resetBtn.disabled = true;
-    handleLayer.hidden = true;
-    demoHandBtn.hidden = true;
   });
 } catch (error) {
   console.error(error);
   cameraToggle.disabled = true;
-  resetBtn.hidden = true;
-  showStatus('此浏览器无法使用 WebGL，请换用支持 WebGL 的浏览器');
+  showStatus('浏览器暂不支持 WebGL');
 }

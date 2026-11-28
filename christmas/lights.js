@@ -40,7 +40,7 @@ export function addFrostLights(tree, crystals, random, arcAtHeight, uniforms) {
     vertexShader: `
       attribute vec3 facet, tint;
       attribute vec4 traits;
-      uniform float clock, light, screenHeight;
+      uniform float clock, light, screenHeight, completePulse, completeWave;
       varying vec3 color;
       varying vec4 profile;
 
@@ -57,11 +57,13 @@ export function addFrostLights(tree, crystals, random, arcAtHeight, uniforms) {
         float sheen = pow(max(0.0, dot(normalize(facet), halfVector)), 7.0);
         float lit = smoothstep(-0.012, 0.036, light - traits.x) * smoothstep(0.0, 0.026, light);
         float wake = lit * exp(-13.0 * max(0.0, light - traits.x));
-        float strength = 0.22 + 0.22 * localWash + 1.30 * pow(flicker, 2.4) + 1.75 * sheen + 1.15 * wake;
-        float flash = smoothstep(0.75, 0.98, traits.z) * max(pow(flicker, 4.0), sheen);
-        float size = 0.049 + 0.153 * pow(traits.z, 4.0) + flash * 0.21 + wake * 0.059;
+        float waveBand = exp(-pow((traits.x - completeWave) * 5.2, 2.0)) * completePulse;
+        float finishLift = completePulse * 0.62 + waveBand * 1.45;
+        float strength = 0.22 + 0.22 * localWash + 1.30 * pow(flicker, 2.4) + 1.75 * sheen + 1.15 * wake + finishLift;
+        float flash = smoothstep(0.75, 0.98, traits.z) * max(pow(flicker, 4.0), sheen) + waveBand * (0.38 + 0.34 * traits.z);
+        float size = 0.049 + 0.153 * pow(traits.z, 4.0) + flash * 0.21 + wake * 0.059 + waveBand * 0.048;
         gl_PointSize = clamp(size * screenHeight * 2.0 / -view.z, 1.55, 56.0);
-        color = tint;
+        color = mix(tint, vec3(1.0, 0.97, 0.90), clamp(waveBand * 0.48, 0.0, 0.55));
         profile = vec4(lit, strength, flash, seed);
       }`,
     fragmentShader: `
@@ -126,7 +128,7 @@ function addTrace(tree, samples, uniforms) {
       }`,
     fragmentShader: `
       varying vec2 path;
-      uniform float light, clock;
+      uniform float light, clock, completePulse, completeWave;
 
       void main() {
         float head = light * 1.015;
@@ -135,14 +137,16 @@ function addTrace(tree, samples, uniforms) {
         float arrival = exp(-max(0.0, distance) * 29.0) * (1.0 - smoothstep(0.94, 1.0, light));
         float flow = 0.5 + 0.5 * sin(path.x * 45.0 - clock * 2.55);
         float ripple = 0.5 + 0.5 * sin(path.x * 183.0 - clock * 4.7 + 1.25 * sin(path.x * 46.0));
-        float energy = 0.30 + 2.55 * pow(flow, 4.0) + 0.50 * pow(ripple, 3.0) + 3.75 * arrival;
+        float waveBand = exp(-pow((path.x - completeWave) * 5.0, 2.0)) * completePulse;
+        float energy = 0.30 + 2.55 * pow(flow, 4.0) + 0.50 * pow(ripple, 3.0) + 3.75 * arrival + completePulse * 0.72 + waveBand * 1.65;
         float cross = path.y;
         float core = exp(-cross * cross * 163.0);
-        float haze = exp(-cross * cross * 10.0) * (0.13 + 0.18 * arrival);
+        float haze = exp(-cross * cross * 10.0) * (0.13 + 0.18 * arrival + 0.14 * completePulse + 0.12 * waveBand);
         float offset = 0.27 + 0.084 * sin(path.x * 39.0 - clock * 1.1);
         float secondary = (cross - offset) * 18.0;
         float thread = exp(-secondary * secondary) * (0.08 + 0.28 * pow(1.0 - flow, 3.0));
         vec3 color = mix(vec3(0.43, 0.69, 0.99), vec3(0.86, 0.94, 1.0), max(core, flow));
+        color = mix(color, vec3(1.0, 0.96, 0.86), clamp(waveBand * 0.42, 0.0, 0.45));
         gl_FragColor = vec4(color * energy + vec3(0.62, 0.44, 0.25) * thread, (core + haze + thread) * reveal);
         #include <colorspace_fragment>
       }`,
@@ -167,7 +171,7 @@ function addTraceSparks(tree, samples, random, uniforms) {
     ...additive, uniforms,
     vertexShader: `
       attribute vec4 traits;
-      uniform float clock, light, screenHeight;
+      uniform float clock, light, screenHeight, completePulse, completeWave;
       varying vec2 spark;
 
       void main() {
@@ -177,11 +181,12 @@ function addTraceSparks(tree, samples, random, uniforms) {
         float glitter = smoothstep(0.02, 0.14, cycle) * (1.0 - smoothstep(0.14, 0.38, cycle));
         float alongTrace = pow(0.5 + 0.5 * sin(traits.x * 45.0 - clock * 2.55), 6.0);
         float lit = smoothstep(0.0, 0.038, distance);
+        float waveSpark = exp(-pow((traits.x - completeWave) * 5.2, 2.0)) * completePulse * (0.35 + 0.65 * traits.z);
         vec3 offset = vec3(position.x * 0.069 * cycle, cycle * traits.w, position.z * 0.069 * cycle);
         vec4 view = modelViewMatrix * vec4(position + offset, 1.0);
         gl_Position = projectionMatrix * view;
-        gl_PointSize = clamp((0.048 + pow(traits.z, 5.0) * 0.13) * screenHeight * 2.1 / -view.z, 1.7, 30.0);
-        spark = vec2(1.32 * tail + glitter * alongTrace * lit * 0.54, traits.y);
+        gl_PointSize = clamp((0.048 + pow(traits.z, 5.0) * 0.13 + waveSpark * 0.05) * screenHeight * 2.1 / -view.z, 1.7, 30.0);
+        spark = vec2(1.32 * tail + glitter * alongTrace * lit * 0.54 + waveSpark * 0.85, traits.y);
       }`,
     fragmentShader: `
       varying vec2 spark;
@@ -265,7 +270,7 @@ export function addStarFlare(tree, position, uniforms) {
       }`,
     fragmentShader: `
       varying vec2 coordinates;
-      uniform float light, starGlow, starAngle, starFacing;
+      uniform float light, starGlow, starAngle, starFacing, completePulse;
 
       void main() {
         vec2 p = coordinates * 1.72;
@@ -285,18 +290,18 @@ export function addStarFlare(tree, position, uniforms) {
         vec2 glintAxes = mat2(cg, sg, -sg, cg) * p;
 
         float facetPulse = 0.68 + 0.32 * starFacing;
-        float core = exp(-r * r * 380.0) * (1.28 + 0.26 * starFacing);
-        float halo = (exp(-r * r * 26.0) * 0.28 + exp(-r * r * 6.8) * 0.12) * 0.90;
+        float core = exp(-r * r * 380.0) * (1.28 + 0.26 * starFacing + 0.42 * completePulse);
+        float halo = (exp(-r * r * 26.0) * (0.28 + 0.16 * completePulse) + exp(-r * r * 6.8) * (0.12 + 0.10 * completePulse)) * 0.90;
 
         // Vertical axis stays anchored to the upright star while horizontal axis foreshortens with 3D facing
-        float vertRay = exp(-abs(p.x) * 70.0) * exp(-r * 5.2) * (0.46 * facetPulse);
-        float horizRay = exp(-abs(tilted.y) * 95.0) * exp(-abs(tilted.x) * (2.2 + 2.4 * (1.0 - starFacing))) * (0.34 * starFacing);
+        float vertRay = exp(-abs(p.x) * 70.0) * exp(-r * 5.2) * (0.46 * facetPulse + 0.24 * completePulse);
+        float horizRay = exp(-abs(tilted.y) * 95.0) * exp(-abs(tilted.x) * (2.2 + 2.4 * (1.0 - starFacing))) * (0.34 * starFacing + 0.22 * completePulse);
         float facetRays = (exp(-abs(glintAxes.x) * 84.0) + exp(-abs(glintAxes.y) * 92.0))
-                        * exp(-r * 6.2) * (0.44 * facetPulse);
+                        * exp(-r * 6.2) * (0.44 * facetPulse + 0.20 * completePulse);
 
-        vec3 rimDistance = (vec3(r) - vec3(0.415, 0.431, 0.453) - strike * 0.054) * 37.0;
-        vec3 rim = exp(-rimDistance * rimDistance) * 0.040;
-        float exposure = (1.08 * starGlow + strike * 2.55) * lit;
+        vec3 rimDistance = (vec3(r) - vec3(0.415, 0.431, 0.453) - strike * 0.054 - completePulse * 0.075) * 37.0;
+        vec3 rim = exp(-rimDistance * rimDistance) * (0.040 + 0.036 * completePulse);
+        float exposure = (1.08 * starGlow + strike * 2.55 + completePulse * 0.58) * lit;
         float edge = (1.0 - smoothstep(0.72, 1.0, abs(coordinates.x))) * (1.0 - smoothstep(0.72, 1.0, abs(coordinates.y)));
 
         vec3 gold = vec3(1.0, 0.73, 0.39);

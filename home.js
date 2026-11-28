@@ -58,7 +58,7 @@ const CARDS = [
     id: 'audio',
     tag: '04 · SONIC WARP',
     title: { zh: '声波畸变', en: 'SONIC WARP' },
-    href: './play.html?mode=audio',
+    href: './sonic.html',
     image: null,
     procedural: 'sonic',
     accentA: '#a66bff',
